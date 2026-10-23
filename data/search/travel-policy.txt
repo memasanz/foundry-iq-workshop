@@ -1,0 +1,15 @@
+Northwind Workshop - Synthetic Travel Policy
+
+This document is fictional workshop material. It contains no real employee records or corporate policy. Use it to explore indexing, chunk boundaries, provenance and keyword retrieval.
+
+Travel planning
+Employees should discuss the purpose, expected outcomes and estimated cost of a trip with their manager before booking. The fictional Northwind Workshop organization prefers remote meetings when they achieve the same result. A trip request includes destination, travel dates, transport options and a short explanation of the customer or training activity. Manager approval should be recorded before any nonrefundable booking.
+
+Travel reimbursement and receipts
+Submit travel reimbursement requests within thirty calendar days after the trip ends. Attach an itemized receipt for lodging, transport and any individual expense greater than twenty-five fictional credits. A card statement by itself is not an itemized receipt. If a receipt is missing, include a written explanation and request an exception from the finance reviewer. Duplicate claims are not permitted. Personal entertainment and unrelated shopping are not reimbursable.
+
+Hotels and transport
+Select a reasonably priced hotel near the meeting location. Public transit is encouraged when practical. If a rental car is necessary, record why public transit was not suitable and include the rental agreement with the expense report. Combining a personal vacation with a workshop trip requires a clear separation of personal costs. The fictional organization pays only the documented business portion of eligible expenses.
+
+Review and escalation
+The manager confirms that expenses relate to the approved trip. The finance reviewer checks receipts, dates, arithmetic and policy exceptions. A rejected reimbursement request should include a reason and the information needed to correct it. Questions about an unusual expense should be raised before travel whenever possible. These rules are deliberately synthetic so that workshop participants can share search results safely.

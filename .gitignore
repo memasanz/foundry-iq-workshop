@@ -1,0 +1,9 @@
+.venv/
+.env
+.env.azure
+.deployment/
+__pycache__/
+.ipynb_checkpoints/
+*.executed.ipynb
+infra/*.json
+attendees.txt

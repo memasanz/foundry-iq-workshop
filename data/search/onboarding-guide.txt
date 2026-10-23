@@ -1,0 +1,15 @@
+Northwind Workshop - Synthetic Onboarding Guide
+
+This fictional document is provided for an Azure AI Search workshop. It is not guidance for any real employer and contains no personal or confidential information.
+
+Before the first workshop session
+Participants receive a schedule, a link to the learning material and a list of local prerequisites. Install a supported Python interpreter, Visual Studio Code, the Jupyter extension and Azure CLI. Sign in to the workshop tenant with an approved account. The facilitator grants access to the shared learning resources. Participants should not request subscription-wide administrator privileges to complete a notebook.
+
+Workspace setup
+Create a local virtual environment and install the workshop requirements. Select that environment as the Jupyter kernel. Read the environment example before adding configuration. Keep API keys, tokens and any private source documents out of notebook outputs and source control. Use a unique attendee prefix for Search indexes, indexers, data sources and skillsets. A prefix avoids accidental naming collisions but does not isolate one attendee from another on a shared service.
+
+First lab
+Upload the synthetic sample files into the attendee's Blob folder. Create a data source that points to that folder, define the index, attach a skillset and create an indexer. Inspect the execution status before running a query. A successful upload to Blob Storage is not proof that Search has indexed the document. Compare the source text with returned chunks and confirm that the provenance field identifies the correct source file.
+
+Troubleshooting and support
+If a request fails, record the endpoint, status code, timestamp and a non-sensitive description of the operation. Do not paste access tokens or secrets into a support conversation. Check that the correct tenant and kernel are selected and allow time for new role assignments to propagate. An empty search result can indicate a restrictive query, an empty source folder, a failed indexer, or missing permission to see a document. Distinguish these cases instead of assuming that the search service is broken.
