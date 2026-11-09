@@ -6,7 +6,7 @@ Facilitator pre-workshop setup: Entra app registration for the SharePoint indexe
 Creates (or reuses) the app, adds the Graph and SharePoint application permissions, and adds a
 federated credential that trusts the Search service's system-assigned managed identity. No client
 secret is created. Admin consent is opt-in (-GrantAdminConsent). When SiteUrl is supplied, grants
-and verifies FullControl for the ingestion app on that site through Microsoft Graph.
+and verifies Read for the ingestion app on that site through Microsoft Graph.
 Requires: az login as a user who can create app registrations (and, for consent, a privileged role).
 Site grants also require Graph Sites.FullControl.All delegated permission on the caller's token,
 a SharePoint Administrator (or higher) role, and membership of the target site.
@@ -17,8 +17,9 @@ create in the deployment tenant. Defaults to iq-workshop-sharepoint-indexer. Exi
 permissions are preserved. Multiple apps with the same name cause an error.
 
 .PARAMETER SiteUrl
-SharePoint HTTPS site URL to authorize for the ingestion app. Grants site-scoped FullControl
-for notebook 07's ACL ingestion. Omit to configure the app without changing site access.
+SharePoint HTTPS site URL to authorize for the ingestion app. Grants site-scoped Read.
+Existing grants that already allow reading are preserved. Omit to configure the app without
+changing site access.
 
 .EXAMPLE
 .\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -WhatIf
@@ -197,26 +198,32 @@ if ($SiteUrl) {
         $identities = @($_.grantedToIdentitiesV2) + @($_.grantedToIdentities)
         @($identities | Where-Object { $_.application.id -eq $app.appId }).Count -gt 0
     })
-    if ($matchingGrants | Where-Object { 'fullcontrol' -in $_.roles }) {
-        Write-Host "Site FullControl already granted to $AppName on $SiteUrl."
+    $readableGrants = @($matchingGrants | Where-Object {
+        @($_.roles | Where-Object { $_ -in @('read', 'write', 'owner', 'fullcontrol') }).Count -gt 0
+    })
+    if ($readableGrants.Count) {
+        Write-Host "Site read access already granted to $AppName on $SiteUrl."
+        if ($readableGrants | Where-Object { @($_.roles | Where-Object { $_ -ne 'read' }).Count -gt 0 }) {
+            Write-Warning 'An existing site grant is broader than Read and was left unchanged.'
+        }
     }
     elseif ($matchingGrants.Count) {
-        throw "The app already has a site grant without FullControl on $SiteUrl. No duplicate grant was created. Have an authorized administrator upgrade that permission using an approved workflow; Graph permission updates require application authentication."
+        throw "The app already has a site grant on $SiteUrl, but its roles do not confirm read access. No duplicate grant was created; review the existing permission."
     }
-    elseif ($PSCmdlet.ShouldProcess("$AppName on $SiteUrl", 'Grant site-scoped FullControl for ACL ingestion')) {
+    elseif ($PSCmdlet.ShouldProcess("$AppName on $SiteUrl", 'Grant site-scoped Read')) {
         $grant = Invoke-Graph POST $sitePermissionsUrl @{
-            roles = @('fullcontrol')
+            roles = @('read')
             grantedToIdentities = @(@{ application = @{ id = $app.appId; displayName = $AppName } })
         }
         if (-not $grant.id) { throw 'The site grant response did not contain a permission ID; site access is not verified.' }
         $grantId = [Uri]::EscapeDataString($grant.id)
         $verified = Invoke-Graph GET "$sitePermissionsUrl/$grantId"
         $identities = @($verified.grantedToIdentitiesV2) + @($verified.grantedToIdentities)
-        if ('fullcontrol' -notin $verified.roles -or
+        if ('read' -notin $verified.roles -or
             -not ($identities | Where-Object { $_.application.id -eq $app.appId })) {
-            throw 'Site FullControl could not be verified for the ingestion app.'
+            throw 'Site Read could not be verified for the ingestion app.'
         }
-        Write-Host "Site FullControl granted and verified for $AppName on $SiteUrl."
+        Write-Host "Site Read granted and verified for $AppName on $SiteUrl."
     }
 }
 else {

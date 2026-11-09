@@ -175,13 +175,13 @@ try {
     & $scriptPath -EnvironmentFile $fixture.FullName -AppName $appName -SiteUrl $siteUrl | Out-Null
     $siteWrites = @($global:TestAppWrites | Where-Object { $_.Path -eq '/v1.0/sites/site-id/permissions' })
     Assert-Equal $siteWrites.Count 1 'SiteUrl must cause a direct site grant'
-    Assert-Equal $siteWrites[0].Body.roles[0] 'fullcontrol' 'ACL ingestion must receive site-scoped FullControl'
+    Assert-Equal ($siteWrites[0].Body.roles -join ',') 'read' 'New site grants must request only Read'
     Assert-Equal $siteWrites[0].Body.grantedToIdentities[0].application.id 'app-client' 'The grant must target the ingestion app'
     Assert-Equal $siteWrites[0].Body.grantedToIdentities[0].application.displayName $appName 'The grant must use the selected app name'
 
     $global:TestAppWrites.Clear()
     & $scriptPath -EnvironmentFile $fixture.FullName -AppName $appName -SiteUrl $siteUrl | Out-Null
-    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 'Reruns must reuse an existing FullControl grant'
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 'Reruns must reuse an existing Read grant'
 
     $global:TestSiteNextPage = $global:TestSitePermissions
     $global:TestSitePermissions = @(@{
@@ -216,28 +216,51 @@ try {
     Assert-Equal $global:TestAppWrites.Count 0 'Site authorization must be checked before app changes'
     $global:TestSiteDenied = $false
 
+    foreach ($role in @('read', 'write', 'owner', 'fullcontrol')) {
+        $global:TestSitePermissions = @(@{
+            id = 'existing-grant'; roles = @($role)
+            grantedToIdentities = @(@{ application = @{ id = 'app-client' } })
+        })
+        $global:TestAppWrites.Clear()
+        & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -WarningVariable warnings | Out-Null
+        Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 "Existing $role grants must not be duplicated, escalated or downgraded"
+        $expectedWarnings = if ($role -eq 'read') { 0 } else { 1 }
+        Assert-Equal @($warnings | Where-Object { "$_" -eq 'An existing site grant is broader than Read and was left unchanged.' }).Count $expectedWarnings 'Broader existing grants must be reported'
+    }
+
     $global:TestSitePermissions = @(@{
-        id = 'existing-read'; roles = @('read')
+        id = 'unknown-role'; roles = @('unknown')
         grantedToIdentities = @(@{ application = @{ id = 'app-client' } })
     })
+    $global:TestAppWrites.Clear()
     $failed = $false
     try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl | Out-Null }
     catch {
-        if ($_.Exception.Message -notlike 'The app already has a site grant without FullControl*') { throw }
+        if ($_.Exception.Message -notlike 'The app already has a site grant*roles do not confirm read access*') { throw }
         $failed = $true
     }
-    Assert-Equal $failed $true 'Existing lower-role grants must not be silently duplicated or revoked'
-    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 'Lower-role grants must remain unchanged'
+    Assert-Equal $failed $true 'Unrecognized existing roles must not be silently duplicated or revoked'
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 'Unrecognized grants must remain unchanged'
 
     $global:TestSitePermissions = @()
-    $global:TestVerifiedGrant = @{ roles = @('read'); grantedToIdentitiesV2 = @(@{ application = @{ id = 'app-client' } }) }
+    $global:TestVerifiedGrant = @{ roles = @(); grantedToIdentitiesV2 = @(@{ application = @{ id = 'app-client' } }) }
     $failed = $false
     try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl | Out-Null }
     catch {
-        if ($_.Exception.Message -notlike 'Site FullControl could not be verified*') { throw }
+        if ($_.Exception.Message -notlike 'Site Read could not be verified*') { throw }
         $failed = $true
     }
     Assert-Equal $failed $true 'The script must verify the granted role rather than claiming success'
+
+    $global:TestSitePermissions = @()
+    $global:TestVerifiedGrant = @{ roles = @('read'); grantedToIdentitiesV2 = @(@{ application = @{ id = 'another-app' } }) }
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike 'Site Read could not be verified*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Read granted to a different app must not pass verification'
 
     $global:TestAppWrites.Clear()
     $failed = $false
