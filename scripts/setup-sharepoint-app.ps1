@@ -34,6 +34,13 @@ $graph = 'https://graph.microsoft.com/v1.0'
 
 function Invoke-Az {
     param([Parameter(ValueFromRemainingArguments)][string[]]$Arguments)
+    # az.cmd passes through cmd.exe, which treats an unquoted URL's & as a command separator.
+    if ((Get-Command az).Source -like '*.cmd') {
+        $urlIndex = [Array]::IndexOf($Arguments, '--url')
+        if ($urlIndex -ge 0) {
+            $Arguments[$urlIndex + 1] = '"' + $Arguments[$urlIndex + 1] + '"'
+        }
+    }
     $result = & az @Arguments --only-show-errors
     if ($LASTEXITCODE -ne 0) { throw "Azure CLI failed: az $($Arguments -join ' ')" }
     return $result

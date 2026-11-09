@@ -142,3 +142,34 @@ finally {
     Remove-Item Function:\az
     Remove-Variable TestAppMatches, TestAppWrites, TestAppFilter -Scope Global
 }
+
+if ($env:OS -eq 'Windows_NT') {
+    $launcherDirectory = Join-Path ([IO.Path]::GetTempPath()) "sharepoint-cli-test-$([Guid]::NewGuid().ToString('N'))"
+    $launcher = Join-Path $launcherDirectory 'az.cmd'
+    $originalPath = $env:PATH
+    try {
+        New-Item -ItemType Directory -Path $launcherDirectory | Out-Null
+        "@echo off`r`necho %*`r`n" | Set-Content -LiteralPath $launcher -Encoding ascii
+        $env:PATH = "$launcherDirectory;$originalPath"
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [Management.Automation.Language.Parser]::ParseFile($scriptPath, [ref]$tokens, [ref]$parseErrors)
+        $wrapper = $ast.Find({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Az'
+        }, $true)
+        & {
+            Invoke-Expression $wrapper.Extent.Text
+            $url = 'https://graph.microsoft.com/v1.0/applications?$filter=displayName%20eq%20%27test%27&$select=id,appId'
+            $result = Invoke-Az rest --method GET --url $url
+            Assert-Equal $LASTEXITCODE 0 'The Windows launcher must not execute $select as a command'
+            Assert-Equal $result "rest --method GET --url `"$url`" --only-show-errors" 'The Windows launcher must receive the complete URL'
+        }
+        Write-Host 'Windows az.cmd URL regression passed.'
+    }
+    finally {
+        $env:PATH = $originalPath
+        Remove-Item -LiteralPath $launcher -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $launcherDirectory -ErrorAction SilentlyContinue
+    }
+}
