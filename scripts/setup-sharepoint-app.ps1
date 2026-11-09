@@ -4,12 +4,13 @@ Facilitator pre-workshop setup: Entra app registration for the SharePoint indexe
 
 .DESCRIPTION
 Creates (or reuses) the app, adds the Graph and SharePoint application permissions, and adds a
-federated credential that trusts the Search service's system-assigned managed identity. No client
-secret is created. Admin consent is opt-in (-GrantAdminConsent). When SiteUrl is supplied, grants
+federated credential that trusts the Search service's system-assigned managed identity. No runtime
+client secret is created. Admin consent is opt-in (-GrantAdminConsent). When SiteUrl is supplied, grants
 and verifies Read for the ingestion app on that site through Microsoft Graph.
 Requires: az login as a user who can create app registrations (and, for consent, a privileged role).
-Site grants also require Graph Sites.FullControl.All delegated permission on the caller's token,
+Default site grants also require Graph Sites.FullControl.All delegated permission on the caller's token,
 a SharePoint Administrator (or higher) role, and membership of the target site.
+Alternatively, BootstrapSiteAccess uses a temporary app-only permission and credential.
 
 .PARAMETER AppName
 Exact display name of an existing app registration to configure, or a new app registration to
@@ -21,11 +22,21 @@ SharePoint HTTPS site URL to authorize for the ingestion app. Grants site-scoped
 Existing grants that already allow reading are preserved. Omit to configure the app without
 changing site access.
 
+.PARAMETER BootstrapSiteAccess
+Opt in to temporarily consenting Graph Sites.FullControl.All directly on the app's service
+principal and adding a 15-minute credential to create the site Read grant. Requires SiteUrl,
+Privileged Role Administrator or Global Administrator, and Graph authorization to manage app
+role assignments and credentials. Cleanup is attempted on success and failure. Pre-existing
+credentials and role assignments are preserved. Runtime permissions still need admin consent.
+
 .EXAMPLE
 .\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -WhatIf
 
 .EXAMPLE
 .\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -SiteUrl 'https://contoso.sharepoint.com/sites/workshop'
+
+.EXAMPLE
+.\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -SiteUrl 'https://contoso.sharepoint.com/sites/workshop' -BootstrapSiteAccess -GrantAdminConsent
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -33,6 +44,7 @@ param(
     [string]$AppName = 'iq-workshop-sharepoint-indexer',
     [string]$SiteUrl,
     [switch]$GrantAdminConsent,
+    [switch]$BootstrapSiteAccess,
     [string]$EnvironmentFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.azure')
 )
 
@@ -55,7 +67,24 @@ function Invoke-Az {
 
 # az rest needs the body in a file to avoid PowerShell quoting problems.
 function Invoke-Graph {
-    param([string]$Method, [string]$Url, $Body)
+    param([string]$Method, [string]$Url, $Body, [string]$AccessToken)
+    if ($AccessToken) {
+        $request = @{
+            Method = $Method; Uri = $Url; TimeoutSec = 60
+            Headers = @{ Authorization = "Bearer $AccessToken" }
+        }
+        if ($Body) {
+            $request.ContentType = 'application/json'
+            $request.Body = $Body | ConvertTo-Json -Depth 10
+        }
+        try { return Invoke-RestMethod @request }
+        catch {
+            $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+            $failure = [InvalidOperationException]::new("App-only Graph request failed: $Method $Url (HTTP $status).")
+            $failure.Data['StatusCode'] = $status
+            throw $failure
+        }
+    }
     $arguments = @('rest', '--method', $Method, '--url', $Url, '--resource', 'https://graph.microsoft.com')
     if ($Body) {
         $file = New-TemporaryFile
@@ -68,6 +97,19 @@ function Invoke-Graph {
     }
     else { $result = Invoke-Az @arguments }
     if ($result) { return ($result | ConvertFrom-Json) }
+}
+
+function Get-GraphCollection {
+    param([string]$Url, [string]$AccessToken)
+    do {
+        $page = Invoke-Graph GET $Url -AccessToken $AccessToken
+        $page.value
+        $Url = $page.'@odata.nextLink'
+    } while ($Url)
+}
+
+if ($BootstrapSiteAccess -and -not $SiteUrl) {
+    throw '-BootstrapSiteAccess requires -SiteUrl.'
 }
 
 if (-not (Test-Path -LiteralPath $EnvironmentFile -PathType Leaf)) {
@@ -87,21 +129,19 @@ if ($PSBoundParameters.ContainsKey('SiteUrl')) {
         $siteUri.UserInfo -or $siteUri.Port -ne 443 -or $siteUri.Query -or $siteUri.Fragment) {
         throw 'SiteUrl must be a public-cloud SharePoint HTTPS site URL, not a sharing link.'
     }
-    try {
-        $sitePath = $siteUri.AbsolutePath.TrimEnd('/')
-        if (-not $sitePath) { $sitePath = '/' }
-        $site = Invoke-Graph GET "$graph/sites/$($siteUri.Host):$sitePath"
-        if (-not $site.id) { throw 'Graph did not return a site ID.' }
-        $sitePermissionsUrl = "$graph/sites/$($site.id)/permissions"
-        $nextPage = $sitePermissionsUrl
-        do {
-            $page = Invoke-Graph GET $nextPage
-            $sitePermissions += @($page.value)
-            $nextPage = $page.'@odata.nextLink'
-        } while ($nextPage)
-    }
-    catch {
-        throw "Cannot inspect site access for $SiteUrl. The signed-in caller needs Graph Sites.FullControl.All delegated permission, SharePoint Administrator (or higher), and site membership. Entra app ownership and Azure subscription Owner are not sufficient. No app or site changes were made. Details: $($_.Exception.Message)"
+    $sitePath = $siteUri.AbsolutePath.TrimEnd('/')
+    if (-not $sitePath) { $sitePath = '/' }
+    $siteLookupUrl = "$graph/sites/$($siteUri.Host):$sitePath"
+    if (-not $BootstrapSiteAccess) {
+        try {
+            $site = Invoke-Graph GET $siteLookupUrl
+            if (-not $site.id) { throw 'Graph did not return a site ID.' }
+            $sitePermissionsUrl = "$graph/sites/$($site.id)/permissions"
+            $sitePermissions = @(Get-GraphCollection $sitePermissionsUrl)
+        }
+        catch {
+            throw "Cannot inspect site access for $SiteUrl. The signed-in caller needs Graph Sites.FullControl.All delegated permission, SharePoint Administrator (or higher), and site membership. Alternatively, an authorized Entra administrator can opt in with -BootstrapSiteAccess. No app or site changes were made. Details: $($_.Exception.Message)"
+        }
     }
 }
 
@@ -119,8 +159,9 @@ $permissions = @(
 )
 $requiredAccess = @()
 foreach ($permission in $permissions) {
-    $api = (Invoke-Graph GET "$graph/servicePrincipals?`$filter=appId eq '$($permission.Api)'&`$select=appRoles").value
+    $api = (Invoke-Graph GET "$graph/servicePrincipals?`$filter=appId eq '$($permission.Api)'&`$select=id,appRoles").value
     if ($api.Count -ne 1) { throw "Expected one API service principal for $($permission.Api)." }
+    if ($permission.Api -eq '00000003-0000-0000-c000-000000000000') { $graphApi = $api[0] }
     $access = foreach ($name in $permission.Names) {
         $role = $api[0].appRoles | Where-Object { $_.value -eq $name -and $_.isEnabled -and 'Application' -in $_.allowedMemberTypes }
         if (-not $role) { throw "Application permission $name not found on $($permission.Api)." }
@@ -162,7 +203,7 @@ else { return }
 $servicePrincipal = (Invoke-Graph GET "$graph/servicePrincipals?`$filter=appId eq '$($app.appId)'&`$select=id").value
 if (-not $servicePrincipal) {
     if ($PSCmdlet.ShouldProcess($AppName, 'Create service principal')) {
-        Invoke-Graph POST "$graph/servicePrincipals" @{ appId = $app.appId } | Out-Null
+        $servicePrincipal = Invoke-Graph POST "$graph/servicePrincipals" @{ appId = $app.appId }
     }
 }
 
@@ -194,36 +235,145 @@ Write-Host "SHAREPOINT_APP_OBJECT_ID=$($app.id)"
 Write-Host "SHAREPOINT_SEARCH_MI_CLIENT_ID=$miClientId"
 
 if ($SiteUrl) {
-    $matchingGrants = @($sitePermissions | Where-Object {
-        $identities = @($_.grantedToIdentitiesV2) + @($_.grantedToIdentities)
-        @($identities | Where-Object { $_.application.id -eq $app.appId }).Count -gt 0
-    })
-    $readableGrants = @($matchingGrants | Where-Object {
-        @($_.roles | Where-Object { $_ -in @('read', 'write', 'owner', 'fullcontrol') }).Count -gt 0
-    })
-    if ($readableGrants.Count) {
-        Write-Host "Site read access already granted to $AppName on $SiteUrl."
-        if ($readableGrants | Where-Object { @($_.roles | Where-Object { $_ -ne 'read' }).Count -gt 0 }) {
-            Write-Warning 'An existing site grant is broader than Read and was left unchanged.'
+    $siteToken = $null
+    $temporaryRolePending = $false
+    $temporaryCredentialPending = $false
+    $temporaryRoleId = $null
+    $temporaryCredential = $null
+    $tokenResponse = $null
+    try {
+        if ($BootstrapSiteAccess) {
+            if (-not $PSCmdlet.ShouldProcess("$AppName on $SiteUrl", 'Temporarily consent Graph Sites.FullControl.All and add a credential to grant site-scoped Read')) {
+                return
+            }
+            $fullControl = $graphApi.appRoles | Where-Object {
+                $_.value -eq 'Sites.FullControl.All' -and $_.isEnabled -and 'Application' -in $_.allowedMemberTypes
+            }
+            if (-not $fullControl -or -not $graphApi.id -or -not $servicePrincipal.id) {
+                throw 'Cannot resolve the Graph FullControl role or the ingestion service principal for bootstrap.'
+            }
+            $assignmentUrl = "$graph/servicePrincipals/$($servicePrincipal.id)/appRoleAssignments"
+            $previousAssignments = @(Get-GraphCollection $assignmentUrl)
+            $existingFullControl = @($previousAssignments | Where-Object {
+                $_.resourceId -eq $graphApi.id -and $_.appRoleId -eq $fullControl.id
+            })
+            if (-not $existingFullControl.Count) {
+                # Direct role consent avoids adding temporary permissions to the app manifest.
+                $temporaryRolePending = $true
+                $temporaryRole = Invoke-Graph POST $assignmentUrl @{
+                    principalId = $servicePrincipal.id; resourceId = $graphApi.id; appRoleId = $fullControl.id
+                }
+                $temporaryRoleId = $temporaryRole.id
+            }
+            else { Write-Warning 'The app already has Graph Sites.FullControl.All; that pre-existing grant will not be removed.' }
+            $credentialName = "workshop-site-bootstrap-$([Guid]::NewGuid().ToString('N'))"
+            $temporaryCredentialPending = $true
+            $temporaryCredential = Invoke-Graph POST "$graph/applications/$($app.id)/addPassword" @{
+                passwordCredential = @{
+                    displayName = $credentialName
+                    endDateTime = [DateTime]::UtcNow.AddMinutes(15).ToString('o')
+                }
+            }
+            if (-not $temporaryCredential.keyId -or -not $temporaryCredential.secretText) {
+                throw 'The temporary credential response was incomplete; bootstrap cannot continue.'
+            }
+            for ($attempt = 0; $attempt -lt 12; $attempt++) {
+                try {
+                    $tokenResponse = Invoke-RestMethod -Method POST `
+                        -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" `
+                        -Body @{
+                            client_id = $app.appId; client_secret = $temporaryCredential.secretText
+                            scope = 'https://graph.microsoft.com/.default'; grant_type = 'client_credentials'
+                        } -TimeoutSec 60
+                    $siteToken = $tokenResponse.access_token
+                    if (-not $siteToken) { throw 'No bootstrap access token was returned.' }
+                    $site = Invoke-Graph GET $siteLookupUrl -AccessToken $siteToken
+                    if (-not $site.id) { throw 'Graph did not return a site ID.' }
+                    $sitePermissionsUrl = "$graph/sites/$($site.id)/permissions"
+                    $sitePermissions = @(Get-GraphCollection $sitePermissionsUrl -AccessToken $siteToken)
+                    break
+                }
+                catch {
+                    $status = $_.Exception.Data['StatusCode']
+                    if (-not $status -and $_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
+                    if ($status -notin @(400, 401, 403, 429)) { throw 'Bootstrap token or site lookup failed; temporary access cleanup will be attempted.' }
+                    if ($attempt -eq 11) { throw 'Bootstrap authorization did not become ready. Check credential/permission propagation and tenant policies.' }
+                    Start-Sleep -Seconds 10
+                }
+            }
+        }
+        $matchingGrants = @($sitePermissions | Where-Object {
+            $identities = @($_.grantedToIdentitiesV2) + @($_.grantedToIdentities)
+            @($identities | Where-Object { $_.application.id -eq $app.appId }).Count -gt 0
+        })
+        $readableGrants = @($matchingGrants | Where-Object {
+            @($_.roles | Where-Object { $_ -in @('read', 'write', 'owner', 'fullcontrol') }).Count -gt 0
+        })
+        if ($readableGrants.Count) {
+            Write-Host "Site read access already granted to $AppName on $SiteUrl."
+            if ($readableGrants | Where-Object { @($_.roles | Where-Object { $_ -ne 'read' }).Count -gt 0 }) {
+                Write-Warning 'An existing site grant is broader than Read and was left unchanged.'
+            }
+        }
+        elseif ($matchingGrants.Count) {
+            throw "The app already has a site grant on $SiteUrl, but its roles do not confirm read access. No duplicate grant was created; review the existing permission."
+        }
+        elseif ($PSCmdlet.ShouldProcess("$AppName on $SiteUrl", 'Grant site-scoped Read')) {
+            $grant = Invoke-Graph POST $sitePermissionsUrl -AccessToken $siteToken -Body @{
+                roles = @('read')
+                grantedToIdentities = @(@{ application = @{ id = $app.appId; displayName = $AppName } })
+            }
+            if (-not $grant.id) { throw 'The site grant response did not contain a permission ID; site access is not verified.' }
+            $grantId = [Uri]::EscapeDataString($grant.id)
+            $verified = Invoke-Graph GET "$sitePermissionsUrl/$grantId" -AccessToken $siteToken
+            $identities = @($verified.grantedToIdentitiesV2) + @($verified.grantedToIdentities)
+            if ('read' -notin $verified.roles -or
+                -not ($identities | Where-Object { $_.application.id -eq $app.appId })) {
+                throw 'Site Read could not be verified for the ingestion app.'
+            }
+            Write-Host "Site Read granted and verified for $AppName on $SiteUrl."
         }
     }
-    elseif ($matchingGrants.Count) {
-        throw "The app already has a site grant on $SiteUrl, but its roles do not confirm read access. No duplicate grant was created; review the existing permission."
-    }
-    elseif ($PSCmdlet.ShouldProcess("$AppName on $SiteUrl", 'Grant site-scoped Read')) {
-        $grant = Invoke-Graph POST $sitePermissionsUrl @{
-            roles = @('read')
-            grantedToIdentities = @(@{ application = @{ id = $app.appId; displayName = $AppName } })
+    finally {
+        $cleanupErrors = @()
+        if ($temporaryRolePending) {
+            try {
+                $rolesToRemove = @(Get-GraphCollection $assignmentUrl | Where-Object {
+                    $_.resourceId -eq $graphApi.id -and $_.appRoleId -eq $fullControl.id -and
+                    $_.id -notin $previousAssignments.id -and
+                    (-not $temporaryRoleId -or $_.id -eq $temporaryRoleId)
+                })
+                foreach ($role in $rolesToRemove) {
+                    Invoke-Graph DELETE "$assignmentUrl/$($role.id)" | Out-Null
+                }
+                if (Get-GraphCollection $assignmentUrl | Where-Object {
+                    $_.resourceId -eq $graphApi.id -and $_.appRoleId -eq $fullControl.id -and
+                    $_.id -notin $previousAssignments.id -and
+                    (-not $temporaryRoleId -or $_.id -eq $temporaryRoleId)
+                }) { throw 'The temporary Graph role is still present.' }
+            }
+            catch { $cleanupErrors += "Remove temporary Graph Sites.FullControl.All from service principal $($servicePrincipal.id)." }
         }
-        if (-not $grant.id) { throw 'The site grant response did not contain a permission ID; site access is not verified.' }
-        $grantId = [Uri]::EscapeDataString($grant.id)
-        $verified = Invoke-Graph GET "$sitePermissionsUrl/$grantId"
-        $identities = @($verified.grantedToIdentitiesV2) + @($verified.grantedToIdentities)
-        if ('read' -notin $verified.roles -or
-            -not ($identities | Where-Object { $_.application.id -eq $app.appId })) {
-            throw 'Site Read could not be verified for the ingestion app.'
+        if ($temporaryCredentialPending) {
+            try {
+                $passwords = (Invoke-Graph GET "$graph/applications/$($app.id)?`$select=passwordCredentials").passwordCredentials
+                foreach ($password in @($passwords | Where-Object { $_.displayName -eq $credentialName })) {
+                    Invoke-Graph POST "$graph/applications/$($app.id)/removePassword" @{ keyId = $password.keyId } | Out-Null
+                }
+                $passwords = (Invoke-Graph GET "$graph/applications/$($app.id)?`$select=passwordCredentials").passwordCredentials
+                if ($passwords | Where-Object { $_.displayName -eq $credentialName }) { throw 'The temporary credential is still present.' }
+            }
+            catch { $cleanupErrors += "Remove temporary credential '$credentialName' from app $($app.id)." }
         }
-        Write-Host "Site Read granted and verified for $AppName on $SiteUrl."
+        $siteToken = $null
+        $tokenResponse = $null
+        $temporaryCredential = $null
+        if ($cleanupErrors.Count) {
+            throw "BOOTSTRAP CLEANUP FAILED. Manual action required: $($cleanupErrors -join ' ')"
+        }
+        if ($temporaryRolePending -or $temporaryCredentialPending) {
+            Write-Host 'Temporary bootstrap permission and credential cleanup verified.'
+        }
     }
 }
 else {

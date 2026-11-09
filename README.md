@@ -238,11 +238,12 @@ Notebook 07's **indexed** path needs an Entra app that Azure AI Search uses to r
 |---|---|
 | Create or update the ingestion app and its federated credential | Permission to register apps, or ownership/admin rights over the existing app, plus Graph authorization for the app-management operations |
 | Read Search's system-assigned managed identity | Azure **Reader** on the Search resource, or an inherited/broader role such as Contributor or Owner |
-| Grant site access with `-SiteUrl` | **SharePoint Administrator or Global Administrator**, plus membership of the target SharePoint site |
-| Authorize the site-permission Graph requests | The signed-in Azure CLI token must include delegated **`Sites.FullControl.All`**, even though the app receives only a site-scoped Read grant |
+| Grant site access with `-SiteUrl` (default delegated method) | **SharePoint Administrator or Global Administrator**, plus membership of the target SharePoint site |
+| Authorize the default site-permission Graph requests | The signed-in Azure CLI token must include delegated **`Sites.FullControl.All`**, even though the app receives only a site-scoped Read grant |
+| Bootstrap site access with `-BootstrapSiteAccess` | **Privileged Role Administrator or Global Administrator**, plus Graph authorization to manage application credentials and app-role assignments (for example, `AppRoleAssignment.ReadWrite.All` + `Application.Read.All`, and app-management authorization). Uses an app-only token for the site grant instead of requiring delegated `Sites.FullControl.All`. |
 | Grant tenant-wide consent with `-GrantAdminConsent` | **Privileged Role Administrator or Global Administrator**, because this app requests Microsoft Graph application permissions; Application Administrator and Cloud Application Administrator alone cannot consent to those Graph application permissions |
 
-These are the **caller's setup permissions**, not additional permissions assigned to the ingestion app. Azure subscription Owner alone does not grant SharePoint or Entra administration rights, and an administrator role does not automatically add the required Graph scope to a CLI token. Activate any required PIM roles and sign in with the required authorization before running the script.
+These are the **caller's setup permissions**. Azure subscription Owner alone does not grant SharePoint or Entra administration rights, and an administrator role does not automatically add the required Graph scope to a CLI token. Activate any required PIM roles and sign in with the required authorization before running the script. Bootstrap explicitly adds temporary application access, as described below; it does not bypass administrator authorization.
 
 The Search identity lookup only reads its principal ID so the script can configure the app's secretless federated trust. It does not read Search documents or grant SharePoint access. Existing Contributor or Owner access at the resource, resource-group or subscription scope already covers that lookup; no extra Reader assignment is needed.
 
@@ -255,6 +256,12 @@ Use `-AppName` for the app registration's **exact display name** in the deployme
 
 # New app: choose a name that does not already exist.
 .\scripts\setup-sharepoint-app.ps1 -AppName 'New Workshop SharePoint Indexer' -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop'
+
+# Opt-in alternative when the CLI user cannot manage site grants with a delegated token.
+# Requires an authorized Entra administrator; temporarily consents tenant-wide Graph FullControl.
+.\scripts\setup-sharepoint-app.ps1 -AppName 'Existing SharePoint Indexer' `
+  -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' `
+  -BootstrapSiteAccess -GrantAdminConsent
 ```
 
 What it does, in order (safe to re-run; it reuses the app by name and preserves existing API permissions):
@@ -264,13 +271,15 @@ What it does, in order (safe to re-run; it reuses the app by name and preserves 
 3. Requests these **application** permissions, looked up by name:
    - Microsoft Graph: `Files.Read.All`, `Sites.Selected`
    - SharePoint: `Sites.Selected`, `User.Read.All`
-4. Adds a **federated credential** that trusts the Search managed identity. No client secret is created; Search proves its identity with its managed identity. Existing credentials on a reused app are left unchanged.
+4. Adds a **federated credential** that trusts the Search managed identity. No runtime client secret is created; Search proves its identity with its managed identity. Existing credentials on a reused app are left unchanged.
 5. With `-GrantAdminConsent`, grants tenant admin consent. Otherwise approve it in Entra > App registrations > API permissions.
 6. Prints the three values for `.env` (`SHAREPOINT_APP_CLIENT_ID`, `SHAREPOINT_APP_OBJECT_ID`, `SHAREPOINT_SEARCH_MI_CLIENT_ID`).
 
 With `-SiteUrl`, the script resolves the site, grants the **ingestion app** site-scoped **Read** through Microsoft Graph, and reads the grant back to verify it. Existing grants that already allow reading are reused; broader grants are left unchanged with a warning, not automatically downgraded. It does not create another app or require PnP PowerShell. Without `-SiteUrl`, it configures only the app and warns that site access is still outstanding. `-WhatIf` makes no changes.
 
-The script checks site access before making app changes and stops with an explanation if the caller is unauthorized; it cannot grant itself the rights listed above. If an existing grant's roles do not confirm read access, the script stops rather than creating a duplicate or revoking it.
+In the default delegated method, the script checks site access before making app changes and stops with an explanation if the caller is unauthorized. With `-BootstrapSiteAccess`, it instead temporarily consents the **Graph `Sites.FullControl.All` application role** directly on the ingestion app's service principal, creates a **15-minute credential**, and uses the resulting app-only token to create and verify the site-specific **Read** grant. It does not add FullControl to the app's requested-permissions manifest. The credential and token stay in memory and are not printed or written to `.env`. Runtime consent for the four requested permissions is still separate (`-GrantAdminConsent`).
+
+Bootstrap attempts cleanup in `finally` on success or failure: it revokes only the new temporary role assignment, removes only its uniquely named temporary credential, and verifies both removals. Pre-existing permissions and credentials are preserved, with a warning if tenant-wide FullControl was already granted. Avoid concurrent permission changes to this app: if the role-creation response is lost, cleanup identifies new matching assignments by comparison with the pre-run snapshot. Cleanup failure stops the script with explicit manual-action instructions; forcibly terminating the process can prevent cleanup. Issued access tokens can remain valid until expiry even after the permission and credential are removed. The indexer remains secretless. If an existing site's grant roles do not confirm read access, either method stops rather than creating a duplicate or revoking it.
 
 The [Search ACL permission matrix](https://learn.microsoft.com/azure/search/search-indexer-sharepoint-access-control-lists#permissions-by-acl-scenario) documents `Sites.Selected` and an explicit site grant, but does not specify the minimum site-grant role for every ACL scenario. This script uses **Read**; verify ACL extraction and two-user query behavior rather than assuming that a successful content-ingestion run proves ACL support. Do not automatically escalate to FullControl. Caveat: Graph `Files.Read.All` remains tenant-wide read, so this is not strict site-only isolation. Use a test tenant or non-sensitive content. The notebook's own app-creation and federation-check cells stay disabled by default; this script replaces them for facilitators.
 

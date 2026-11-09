@@ -14,6 +14,11 @@ $global:TestSitePermissions = @()
 $global:TestSiteNextPage = @()
 $global:TestSiteDenied = $false
 $global:TestVerifiedGrant = $null
+$global:TestRoleAssignments = @()
+$global:TestPasswords = @(@{ keyId = 'existing-key'; displayName = 'existing-credential' })
+$global:TestBootstrapFailure = ''
+$global:TestTokenAttempts = 0
+$global:TestSleepCalls = 0
 
 function global:az {
     $arguments = @($args)
@@ -28,8 +33,11 @@ function global:az {
             $path = $uri.AbsolutePath
             $query = [Uri]::UnescapeDataString($uri.Query)
             if ($method -ne 'GET') {
-                $bodyPath = $arguments[$arguments.IndexOf('--body') + 1].Substring(1)
-                $body = Get-Content -LiteralPath $bodyPath -Raw | ConvertFrom-Json
+                $body = $null
+                if ($arguments -contains '--body') {
+                    $bodyPath = $arguments[$arguments.IndexOf('--body') + 1].Substring(1)
+                    $body = Get-Content -LiteralPath $bodyPath -Raw | ConvertFrom-Json
+                }
                 $global:TestAppWrites.Add(@{ Method = $method; Path = $path; Body = $body })
                 if ($method -eq 'POST' -and $path -eq '/v1.0/applications') {
                     @{ id = 'app-object'; appId = 'app-client' } | ConvertTo-Json -Compress
@@ -39,6 +47,44 @@ function global:az {
                     $global:TestSitePermissions += $grant
                     $grant | ConvertTo-Json -Depth 10 -Compress
                 }
+                elseif ($method -eq 'POST' -and $path -eq '/v1.0/servicePrincipals/app-service-principal/appRoleAssignments') {
+                    $assignment = @{ id = 'bootstrap-role'; resourceId = $body.resourceId; appRoleId = $body.appRoleId }
+                    $global:TestRoleAssignments += $assignment
+                    if ($global:TestBootstrapFailure -eq 'role-response') {
+                        $global:LASTEXITCODE = 1
+                        return
+                    }
+                    $assignment | ConvertTo-Json -Compress
+                }
+                elseif ($method -eq 'DELETE' -and $path -eq '/v1.0/servicePrincipals/app-service-principal/appRoleAssignments/bootstrap-role') {
+                    if ($global:TestBootstrapFailure -eq 'role-cleanup') {
+                        $global:LASTEXITCODE = 1
+                        return
+                    }
+                    $global:TestRoleAssignments = @($global:TestRoleAssignments | Where-Object { $_.id -ne 'bootstrap-role' })
+                }
+                elseif ($method -eq 'POST' -and $path -eq '/v1.0/applications/app-object/addPassword') {
+                    $global:TestPasswords += @{ keyId = 'bootstrap-key'; displayName = $body.passwordCredential.displayName }
+                    if ($global:TestBootstrapFailure -eq 'credential-response') {
+                        $global:LASTEXITCODE = 1
+                        return
+                    }
+                    @{ keyId = 'bootstrap-key'; secretText = 'test-secret-not-for-output' } | ConvertTo-Json -Compress
+                }
+                elseif ($method -eq 'POST' -and $path -eq '/v1.0/applications/app-object/removePassword') {
+                    if ($global:TestBootstrapFailure -eq 'credential-cleanup') {
+                        $global:LASTEXITCODE = 1
+                        return
+                    }
+                    $global:TestPasswords = @($global:TestPasswords | Where-Object { $_.keyId -ne $body.keyId })
+                }
+                elseif ($method -ne 'PATCH') { throw "Unexpected Graph write: $method $url" }
+            }
+            elseif ($path -eq '/v1.0/servicePrincipals/app-service-principal/appRoleAssignments') {
+                @{ value = @($global:TestRoleAssignments) } | ConvertTo-Json -Depth 5 -Compress
+            }
+            elseif ($path -eq '/v1.0/applications/app-object') {
+                @{ passwordCredentials = @($global:TestPasswords) } | ConvertTo-Json -Depth 5 -Compress
             }
             elseif ($path -eq '/v1.0/sites/contoso.sharepoint.com:/sites/workshop') {
                 @{ id = 'site-id' } | ConvertTo-Json -Compress
@@ -83,16 +129,57 @@ function global:az {
                     @{ value = @(@{ id = 'app-service-principal' }) } | ConvertTo-Json -Depth 5 -Compress
                 }
                 else {
-                    $roles = foreach ($name in @('Files.Read.All', 'Sites.Selected', 'User.Read.All')) {
+                    $roles = foreach ($name in @('Files.Read.All', 'Sites.Selected', 'User.Read.All', 'Sites.FullControl.All')) {
                         @{ id = $name; value = $name; isEnabled = $true; allowedMemberTypes = @('Application') }
                     }
-                    @{ value = @(@{ appRoles = @($roles) }) } | ConvertTo-Json -Depth 5 -Compress
+                    @{ value = @(@{ id = 'graph-api-principal'; appRoles = @($roles) }) } | ConvertTo-Json -Depth 5 -Compress
                 }
             }
             else { throw "Unexpected Graph request: $method $url" }
         }
         default { throw "Unexpected Azure CLI command: $arguments" }
     }
+}
+
+function global:Invoke-RestMethod {
+    param($Method, $Uri, $Headers, $Body, $TimeoutSec, $ContentType)
+    if ($Uri -like 'https://login.microsoftonline.com/*/oauth2/v2.0/token') {
+        $global:TestTokenAttempts++
+        Assert-Equal $Body.client_secret 'test-secret-not-for-output' 'Bootstrap must use only its temporary credential'
+        if ($global:TestBootstrapFailure -eq 'token') { throw 'Token failure with test-secret-not-for-output' }
+        if ($global:TestBootstrapFailure -eq 'propagation-timeout' -or
+            ($global:TestBootstrapFailure -eq 'propagation' -and $global:TestTokenAttempts -eq 1)) {
+            $failure = [InvalidOperationException]::new('Propagation pending')
+            $failure.Data['StatusCode'] = 401
+            throw $failure
+        }
+        return @{ access_token = 'test-bootstrap-token' }
+    }
+    Assert-Equal $Headers.Authorization 'Bearer test-bootstrap-token' 'Site requests must use the app-only token'
+    if ($global:TestBootstrapFailure -eq 'site-grant' -and $Method -eq 'POST') { throw 'Site grant failed' }
+    $arguments = @('rest', '--method', $Method, '--url', $Uri)
+    $file = $null
+    $wasDenied = $global:TestSiteDenied
+    try {
+        if ($Body) {
+            $file = New-TemporaryFile
+            $Body | Set-Content -LiteralPath $file.FullName
+            $arguments += @('--body', "@$($file.FullName)")
+        }
+        $global:TestSiteDenied = $false
+        $result = az @arguments
+        if ($LASTEXITCODE -ne 0) { throw 'Mock app-only request failed' }
+        if ($result) { return ($result | ConvertFrom-Json) }
+    }
+    finally {
+        $global:TestSiteDenied = $wasDenied
+        if ($file) { Remove-Item -LiteralPath $file.FullName }
+    }
+}
+
+function global:Start-Sleep {
+    param($Seconds)
+    $global:TestSleepCalls++
 }
 
 function Assert-Equal($Actual, $Expected, $Message) {
@@ -271,13 +358,102 @@ try {
     }
     Assert-Equal $failed $true 'Non-SharePoint site URLs must be rejected'
     Assert-Equal $global:TestAppWrites.Count 0 'Invalid URLs must not change the app'
-    Write-Host 'SharePoint app checks passed: names, preserved permissions, site grants, verification, pagination, authorization and WhatIf.'
+
+    $global:TestVerifiedGrant = $null
+    $global:TestSitePermissions = @()
+    $global:TestSiteDenied = $true
+    $global:TestAppWrites.Clear()
+    $bootstrapOutput = & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess *>&1
+    Assert-Equal $global:TestTokenAttempts 1 'Bootstrap must acquire an app-only token instead of using delegated site access'
+    Assert-Equal $global:TestRoleAssignments.Count 0 'Temporary Graph FullControl consent must be revoked'
+    Assert-Equal ($global:TestPasswords.keyId -join ',') 'existing-key' 'Only the temporary credential must be removed'
+    Assert-Equal ($global:TestSitePermissions[0].roles -join ',') 'read' 'Bootstrap must leave only Read on the site'
+    Assert-Equal (($bootstrapOutput | Out-String) -match 'test-secret-not-for-output|test-bootstrap-token') $false 'Credentials and tokens must not be printed'
+    $passwordWrite = @($global:TestAppWrites | Where-Object { $_.Path -like '*/addPassword' })[0]
+    $expiryMinutes = ([DateTimeOffset]$passwordWrite.Body.passwordCredential.endDateTime - [DateTimeOffset]::UtcNow).TotalMinutes
+    Assert-Equal ($expiryMinutes -gt 14 -and $expiryMinutes -le 15) $true 'Bootstrap credentials must expire in 15 minutes'
+
+    foreach ($failure in @('site-grant', 'token', 'role-response', 'credential-response', 'propagation-timeout')) {
+        $global:TestBootstrapFailure = $failure
+        $global:TestSitePermissions = @()
+        $global:TestAppWrites.Clear()
+        $failed = $false
+        try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess | Out-Null }
+        catch {
+            if ($_.Exception.Message -like '*test-secret-not-for-output*') { throw 'Bootstrap errors must not expose credentials' }
+            $failed = $true
+        }
+        Assert-Equal $failed $true "Bootstrap $failure must fail explicitly"
+        Assert-Equal $global:TestRoleAssignments.Count 0 "Temporary role cleanup must run after $failure"
+        Assert-Equal ($global:TestPasswords.keyId -join ',') 'existing-key' "Temporary credential cleanup must run after $failure"
+    }
+
+    $global:TestBootstrapFailure = 'propagation'
+    $global:TestTokenAttempts = 0
+    $global:TestSleepCalls = 0
+    $global:TestSitePermissions = @()
+    & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess | Out-Null
+    Assert-Equal $global:TestTokenAttempts 2 'Bootstrap must retry temporary authentication propagation failures'
+    Assert-Equal $global:TestSleepCalls 1 'Propagation retries must wait before requesting another token'
+    Assert-Equal $global:TestRoleAssignments.Count 0 'Cleanup must also run after a successful retry'
+
+    $global:TestBootstrapFailure = ''
+    $global:TestRoleAssignments = @(@{ id = 'existing-fullcontrol'; resourceId = 'graph-api-principal'; appRoleId = 'Sites.FullControl.All' })
+    $global:TestSitePermissions = @()
+    & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess | Out-Null
+    Assert-Equal ($global:TestRoleAssignments.id -join ',') 'existing-fullcontrol' 'Pre-existing Graph FullControl consent must not be revoked'
+    Assert-Equal ($global:TestPasswords.keyId -join ',') 'existing-key' 'Pre-existing credentials must remain unchanged'
+
+    $global:TestRoleAssignments = @(@{ id = 'existing-selected'; resourceId = 'graph-api-principal'; appRoleId = 'Sites.Selected' })
+    & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess | Out-Null
+    Assert-Equal ($global:TestRoleAssignments.id -join ',') 'existing-selected' 'Temporary consent cleanup must preserve other existing app-role assignments'
+
+    $global:TestRoleAssignments = @()
+    $global:TestAppWrites.Clear()
+    $global:TestTokenAttempts = 0
+    & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess -WhatIf | Out-Null
+    Assert-Equal $global:TestAppWrites.Count 0 'Bootstrap WhatIf must not change any app or site permissions or credentials'
+    Assert-Equal $global:TestTokenAttempts 0 'Bootstrap WhatIf must not request app-only tokens'
+
+    $global:TestBootstrapFailure = 'role-cleanup'
+    $global:TestSitePermissions = @()
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike 'BOOTSTRAP CLEANUP FAILED*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Cleanup failure must be explicit, not reported as success'
+    Assert-Equal ($global:TestPasswords.keyId -join ',') 'existing-key' 'Credential cleanup must still run when role cleanup fails'
+
+    $global:TestRoleAssignments = @()
+    $global:TestBootstrapFailure = 'credential-cleanup'
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl -BootstrapSiteAccess | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike "BOOTSTRAP CLEANUP FAILED*Remove temporary credential*") { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Credential cleanup failure must include manual-action instructions'
+    Assert-Equal $global:TestRoleAssignments.Count 0 'Role cleanup must finish even when credential cleanup fails'
+
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -BootstrapSiteAccess | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike '*requires -SiteUrl*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Bootstrap must require an explicit site URL'
+    Write-Host 'SharePoint app checks passed: names, preserved permissions, Read grants, bootstrap retries/cleanup, pagination, authorization and WhatIf.'
 }
 finally {
     Remove-Item -LiteralPath $fixture.FullName
     Remove-Item Function:\az
+    Remove-Item Function:\Invoke-RestMethod
+    Remove-Item Function:\Start-Sleep
     Remove-Variable TestAppMatches, TestAppWrites, TestAppFilter -Scope Global
     Remove-Variable TestSitePermissions, TestSiteNextPage, TestSiteDenied, TestVerifiedGrant -Scope Global
+    Remove-Variable TestRoleAssignments, TestPasswords, TestBootstrapFailure, TestTokenAttempts, TestSleepCalls -Scope Global
 }
 
 if ($env:OS -eq 'Windows_NT') {
