@@ -1,5 +1,8 @@
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from urllib.parse import quote
@@ -11,9 +14,10 @@ import requests
 from test_notebooks import ROOT, code_cell, http_response
 
 
-BLOB = "03-blob-indexer-skills.ipynb"
-SP_INDEXED = "04-sharepoint-indexed.ipynb"
-SP_REMOTE = "05-sharepoint-remote.ipynb"
+BLOB = "04-blob-indexer-skills.ipynb"
+PUSH = "05-push-chunks-vectors.ipynb"
+SP_INDEXED = "06-sharepoint-indexed.ipynb"
+SP_REMOTE = "07-sharepoint-remote.ipynb"
 
 
 def search_namespace():
@@ -23,6 +27,7 @@ def search_namespace():
         "time": SimpleNamespace(sleep=Mock()),
         "search_token": lambda: "search-user-token",
         "storage_token": lambda: "storage-user-token",
+        "embedding_token": lambda: "embedding-user-token",
         "graph_token": lambda: "graph-admin-token",
         "arm_token": lambda: "arm-admin-token",
         "search_endpoint": "https://workshop.search.windows.net",
@@ -37,6 +42,11 @@ def search_namespace():
         "remote_source_name": "alice01-remote-source",
         "remote_base_name": "alice01-remote-kb",
         "api_version": "2026-08-01-preview",
+        "embedding_endpoint": "https://workshop.openai.azure.com",
+        "embedding_deployment": "workshop-embedding",
+        "embedding_model": "text-embedding-3-small",
+        "embedding_dimensions": 1536,
+        "semantic_configuration": "chunk-semantic",
         "site_url": "https://contoso.sharepoint.com/sites/workshop",
         "tenant_id": "11111111-1111-1111-1111-111111111111",
         "sp_app_client_id": "22222222-2222-2222-2222-222222222222",
@@ -90,7 +100,7 @@ class SearchCellTests(unittest.TestCase):
             self.assertGreater(len(call.kwargs["data"]), 1000)
         self.http.post.assert_not_called()
 
-    def test_utility_skills_and_chunk_projection_contract(self):
+    def test_embedding_skills_and_chunk_projection_contract(self):
         run_cell(BLOB, "create-index", self.ns)
         fields = {field["name"]: field for field in self.ns["index"]["fields"]}
         self.assertEqual(fields["source"]["type"], "Edm.ComplexType")
@@ -98,7 +108,9 @@ class SearchCellTests(unittest.TestCase):
         run_cell(BLOB, "create-skillset", self.ns)
         skills = self.ns["skillset"]["skills"]
         self.assertEqual([skill["@odata.type"] for skill in skills], [
-            "#Microsoft.Skills.Text.SplitSkill", "#Microsoft.Skills.Util.ShaperSkill",
+            "#Microsoft.Skills.Text.SplitSkill",
+            "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
+            "#Microsoft.Skills.Util.ShaperSkill",
         ])
         split = skills[0]
         self.assertEqual((split["maximumPageLength"], split["pageOverlapLength"]), (1000, 200))
@@ -108,9 +120,270 @@ class SearchCellTests(unittest.TestCase):
         self.assertEqual(selector["parentKeyFieldName"], "parent_id")
         self.assertEqual(selector["mappings"], [
             {"name": "chunk", "source": "/document/chunks/*"},
+            {"name": "text_vector", "source": "/document/chunks/*/text_vector"},
+            {"name": "title", "source": "/document/metadata_storage_name"},
             {"name": "source", "source": "/document/provenance"},
         ])
+        embedding = skills[1]
+        self.assertEqual(embedding["context"], selector["sourceContext"])
+        self.assertEqual(embedding["inputs"], [{"name": "text", "source": selector["sourceContext"]}])
+        self.assertEqual(embedding["outputs"], [{"name": "embedding", "targetName": "text_vector"}])
+        self.assertEqual(embedding["dimensions"], fields["text_vector"]["dimensions"])
+        run_cell(BLOB, "create-index", self.ns)
+        vectorizer = self.ns["index"]["vectorSearch"]["vectorizers"][0]["azureOpenAIParameters"]
+        for name in ("resourceUri", "deploymentId", "modelName"):
+            self.assertEqual(embedding[name], vectorizer[name])
+        self.assertNotIn("apiKey", embedding)
+        self.assertNotIn("authIdentity", embedding)
         self.assertNotIn("cognitiveServices", self.ns["skillset"])
+
+    def test_both_vector_indexes_connect_profile_vectorizer_and_semantic_fields(self):
+        self.ns["embedding_dimensions"] = 768
+        schemas = []
+        for notebook in (BLOB, PUSH):
+            with self.subTest(notebook=notebook):
+                run_cell(notebook, "create-index", self.ns)
+                index = self.http.put.call_args.kwargs["json"]
+                fields = {field["name"]: field for field in index["fields"]}
+                vector_field = fields["text_vector"]
+                self.assertEqual(vector_field["dimensions"], 768)
+                vector_search = index["vectorSearch"]
+                profile = vector_search["profiles"][0]
+                self.assertEqual(vector_field["vectorSearchProfile"], profile["name"])
+                self.assertEqual(profile["algorithm"], vector_search["algorithms"][0]["name"])
+                self.assertEqual(profile["vectorizer"], vector_search["vectorizers"][0]["name"])
+                parameters = vector_search["vectorizers"][0]["azureOpenAIParameters"]
+                self.assertEqual(parameters, {
+                    "resourceUri": self.ns["embedding_endpoint"],
+                    "deploymentId": self.ns["embedding_deployment"],
+                    "modelName": self.ns["embedding_model"],
+                })
+                semantic = index["semantic"]["configurations"][0]
+                self.assertEqual(semantic["name"], index["semantic"]["defaultConfiguration"])
+                for field in [semantic["prioritizedFields"]["titleField"],
+                              *semantic["prioritizedFields"]["prioritizedContentFields"]]:
+                    self.assertTrue(fields[field["fieldName"]]["searchable"])
+                schemas.append(index)
+        self.assertEqual(schemas[0], schemas[1])
+
+    def test_same_prefix_gives_separate_indexes_and_correct_inference_identity(self):
+        settings = {
+            "AZURE_TENANT_ID": "11111111-1111-1111-1111-111111111111",
+            "AZURE_SEARCH_ENDPOINT": self.ns["search_endpoint"],
+            "AZURE_STORAGE_RESOURCE_ID": self.ns["storage_id"],
+            "AZURE_STORAGE_BLOB_ENDPOINT": self.ns["storage_endpoint"],
+            "AZURE_STORAGE_CONTAINER_NAME": self.ns["container_name"],
+            "AZURE_AI_ACCOUNT_NAME": "workshop",
+            "AZURE_AI_EMBEDDING_DEPLOYMENT_NAME": "workshop-embedding",
+            "WORKSHOP_PREFIX": "alice01",
+        }
+        names = []
+        with patch.dict(os.environ, settings, clear=True), patch("dotenv.load_dotenv"), \
+                patch("azure.identity.AzureCliCredential") as credential, \
+                patch("azure.identity.get_bearer_token_provider") as provider:
+            for notebook in (BLOB, PUSH):
+                namespace = {}
+                run_cell(notebook, "configuration", namespace)
+                names.append(namespace["index_name"])
+                self.assertEqual(namespace["embedding_endpoint"], self.ns["embedding_endpoint"])
+            self.assertEqual(len(set(names)), 2)
+            provider.assert_any_call(
+                credential.return_value, "https://cognitiveservices.azure.com/.default",
+            )
+
+    def test_search_modes_are_distinct_and_keep_the_same_query(self):
+        modes = {
+            "query-index": (True, False, False),
+            "query-vector": (False, True, False),
+            "query-hybrid": (True, True, False),
+            "query-semantic": (True, False, True),
+            "query-semantic-hybrid": (True, True, True),
+        }
+        for notebook in (BLOB, PUSH):
+            for cell_id, (keyword, vector, semantic) in modes.items():
+                with self.subTest(notebook=notebook, cell=cell_id):
+                    self.http.post.reset_mock()
+                    run_cell(notebook, cell_id, self.ns)
+                    self.http.post.assert_called_once()
+                    call = self.http.post.call_args
+                    self.assertIn(f"/indexes/{self.ns['index_name']}/docs/search?", call.args[0])
+                    self.assertEqual(call.kwargs["headers"]["Authorization"], "Bearer search-user-token")
+                    body = call.kwargs["json"]
+                    self.assertEqual("search" in body, keyword)
+                    self.assertEqual("vectorQueries" in body, vector)
+                    self.assertEqual(body.get("queryType") == "semantic", semantic)
+                    self.assertEqual(body["top"], 3)
+                    if keyword:
+                        self.assertEqual(body["search"], self.ns["question"])
+                    if vector:
+                        self.assertEqual(body["vectorQueries"], [{
+                            "kind": "text", "text": self.ns["question"],
+                            "fields": "text_vector", "k": 50,
+                        }])
+                    if semantic:
+                        self.assertEqual(body["semanticConfiguration"], self.ns["semantic_configuration"])
+                        self.assertEqual(body["captions"], "extractive")
+
+    def test_semantic_partial_results_and_query_authorization_errors_surface(self):
+        for notebook in (BLOB, PUSH):
+            self.ns["question"] = "travel expenses"
+            for cell in ("query-semantic", "query-semantic-hybrid"):
+                for status, body in [
+                    (206, {"value": []}),
+                    (200, {"@search.semanticPartialResponseReason": "capacityOverloaded"}),
+                ]:
+                    self.http.post.return_value = http_response(status, body)
+                    with self.assertRaisesRegex(RuntimeError, "Semantic ranking did not complete"):
+                        run_cell(notebook, cell, self.ns)
+            for status in (403, 429):
+                self.http.post.return_value = http_response(status, {})
+                with self.assertRaises(requests.HTTPError):
+                    run_cell(notebook, "query-vector", self.ns)
+
+    def test_blob_vector_verification_rejects_missing_or_wrong_size(self):
+        for values in ([], [{"chunk_id": "one"}], [{"chunk_id": "one", "text_vector": [0.1]}]):
+            self.http.post.return_value = http_response(200, {"value": values})
+            with self.assertRaisesRegex(RuntimeError, "Missing or wrong-sized"):
+                run_cell(BLOB, "verify-vectors", self.ns)
+        self.http.post.return_value = http_response(200, {"value": [{
+            "chunk_id": "one", "text_vector": [0.1] * self.ns["embedding_dimensions"],
+        }]})
+        output = run_cell(BLOB, "verify-vectors", self.ns)
+        output.assert_called_once_with("one", "| vector dimensions:", self.ns["embedding_dimensions"])
+
+    def test_push_chunking_preserves_all_text_overlap_and_stable_keys(self):
+        run_cell(PUSH, "chunk-documents", self.ns)
+        documents = self.ns["documents"]
+        self.assertGreater(len(documents), len(self.ns["sample_files"]))
+        self.assertEqual(len({item["chunk_id"] for item in documents}), len(documents))
+        for path in self.ns["sample_files"]:
+            chunks = [item["chunk"] for item in documents if item["parent_id"] == path.stem]
+            reconstructed = chunks[0] + "".join(chunk[200:] for chunk in chunks[1:])
+            self.assertEqual(reconstructed, path.read_text(encoding="utf-8"))
+            self.assertTrue(all(0 < len(chunk) <= 1000 for chunk in chunks))
+        for item in documents:
+            self.assertEqual(item["@search.action"], "upload")
+            self.assertEqual(item["source"]["url"], f"data/search/{item['title']}")
+        run_cell(PUSH, "chunk-documents", self.ns)
+        self.assertEqual(self.ns["documents"], documents)
+        self.assertEqual(self.http.mock_calls, [])
+
+    def test_push_chunking_avoids_redundant_tail_and_rejects_empty_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.ns["root"] = Path(directory)
+            folder = Path(directory) / "data" / "search"
+            folder.mkdir(parents=True)
+            (folder / "short.txt").write_text("a" * 10, encoding="utf-8")
+            for length, expected in ((1000, 1), (1001, 2), (1800, 2)):
+                with self.subTest(length=length):
+                    (folder / "long.txt").write_text("b" * length, encoding="utf-8")
+                    run_cell(PUSH, "chunk-documents", self.ns)
+                    chunks = [item for item in self.ns["documents"] if item["parent_id"] == "long"]
+                    self.assertEqual(len(chunks), expected)
+            (folder / "long.txt").write_text(" \n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "Empty source"):
+                run_cell(PUSH, "chunk-documents", self.ns)
+
+    def test_push_embeddings_batch_and_map_response_indexes_not_response_order(self):
+        self.ns["embedding_dimensions"] = 3
+        self.ns["documents"] = [{"chunk": f"chunk-{number}"} for number in range(17)]
+        self.http.post.side_effect = [
+            http_response(200, {"data": [
+                {"index": number, "embedding": [float(number)] * 3}
+                for number in reversed(range(16))
+            ]}),
+            http_response(200, {"data": [{"index": 0, "embedding": [99.0] * 3}]}),
+        ]
+        run_cell(PUSH, "embed-documents", self.ns)
+        self.assertEqual(self.http.post.call_count, 2)
+        for call, count in zip(self.http.post.call_args_list, (16, 1)):
+            self.assertIn("/openai/deployments/workshop-embedding/embeddings?", call.args[0])
+            self.assertEqual(call.kwargs["headers"]["Authorization"], "Bearer embedding-user-token")
+            self.assertEqual(len(call.kwargs["json"]["input"]), count)
+            self.assertEqual(call.kwargs["json"]["dimensions"], 3)
+        self.assertEqual(self.ns["documents"][4]["text_vector"], [4.0] * 3)
+        self.assertEqual(self.ns["documents"][16]["text_vector"], [99.0] * 3)
+
+    def test_push_embedding_failures_do_not_look_like_success(self):
+        self.ns["documents"] = [{"chunk": "one"}, {"chunk": "two"}]
+        for data in (
+            [],
+            [{"index": 0, "embedding": [0.1] * 1536}],
+            [{"index": 0, "embedding": [0.1]}, {"index": 1, "embedding": [0.2]}],
+            [{"index": 0, "embedding": []}, {"index": 0, "embedding": []}],
+        ):
+            with self.subTest(response_size=len(data)):
+                self.http.post.return_value = http_response(200, {"data": data})
+                with self.assertRaises(RuntimeError):
+                    run_cell(PUSH, "embed-documents", self.ns)
+        for status in (403, 429):
+            self.http.post.return_value = http_response(status, {})
+            with self.assertRaises(requests.HTTPError):
+                run_cell(PUSH, "embed-documents", self.ns)
+
+    def test_push_documents_checks_each_item_and_rejects_incomplete_embeddings(self):
+        self.ns["documents"] = [
+            {"chunk_id": "one", "text_vector": [0.1] * 1536},
+            {"chunk_id": "two", "text_vector": [0.2] * 1536},
+        ]
+        for status, results in [
+            (207, [{"key": "one", "status": True}, {"key": "two", "status": False}]),
+            (200, [{"key": "one", "status": True}]),
+            (200, [{"key": "one", "status": True}, {"key": "one", "status": True}]),
+        ]:
+            self.http.post.return_value = http_response(status, {"value": results})
+            with self.assertRaisesRegex(RuntimeError, "Push was incomplete"):
+                run_cell(PUSH, "push-documents", self.ns)
+        self.http.post.return_value = http_response(200, {"value": [
+            {"key": "two", "status": True}, {"key": "one", "status": True},
+        ]})
+        run_cell(PUSH, "push-documents", self.ns)
+        call = self.http.post.call_args
+        self.assertIn("/docs/index?", call.args[0])
+        self.assertEqual(call.kwargs["json"], {"value": self.ns["documents"]})
+        self.assertEqual(call.kwargs["headers"]["Authorization"], "Bearer search-user-token")
+        self.http.post.reset_mock()
+        del self.ns["documents"][1]["text_vector"]
+        with self.assertRaisesRegex(RuntimeError, "embed every document"):
+            run_cell(PUSH, "push-documents", self.ns)
+        self.http.post.assert_not_called()
+
+    def test_push_batches_and_verifies_exact_keys(self):
+        self.ns["embedding_dimensions"] = 2
+        self.ns["documents"] = [
+            {"chunk_id": f"chunk-{number}", "chunk": "new text", "text_vector": [0.1, 0.2]}
+            for number in range(101)
+        ]
+        self.http.post.side_effect = lambda url, **kwargs: http_response(200, {
+            "value": [{"key": item["chunk_id"], "status": True} for item in kwargs["json"]["value"]],
+        })
+        run_cell(PUSH, "push-documents", self.ns)
+        self.assertEqual([len(call.kwargs["json"]["value"]) for call in self.http.post.call_args_list],
+                         [100, 1])
+        self.http.get.return_value = http_response(200, {"chunk": "new text", "text_vector": [0.1, 0.2]})
+        run_cell(PUSH, "verify-documents", self.ns)
+        self.assertEqual(self.http.get.call_count, 101)
+        self.assertIn("/docs/chunk-100?", self.http.get.call_args.args[0])
+        self.ns["time"].sleep.assert_not_called()
+
+    def test_push_verification_waits_for_new_content_and_times_out_on_stale_vectors(self):
+        self.ns["embedding_dimensions"] = 2
+        self.ns["documents"] = [{"chunk_id": "one", "chunk": "new", "text_vector": [0.1, 0.2]}]
+        self.http.get.side_effect = [
+            http_response(404, {}),
+            http_response(200, {"chunk": "old", "text_vector": [0.1, 0.2]}),
+            http_response(200, {"chunk": "new", "text_vector": [0.3, 0.4]}),
+            http_response(200, {"chunk": "new", "text_vector": [0.100000001, 0.200000002]}),
+        ]
+        run_cell(PUSH, "verify-documents", self.ns)
+        self.assertEqual(self.ns["time"].sleep.call_count, 3)
+        self.http.get.side_effect = None
+        self.http.get.return_value = http_response(200, {"chunk": "new", "text_vector": [0.3, 0.4]})
+        with self.assertRaises(TimeoutError):
+            run_cell(PUSH, "verify-documents", self.ns)
+        self.http.get.return_value = http_response(403, {})
+        with self.assertRaises(requests.HTTPError):
+            run_cell(PUSH, "verify-documents", self.ns)
 
     def test_sharepoint_uses_secretless_connection_and_acl_ingestion(self):
         with patch.dict("os.environ", {
@@ -297,7 +570,7 @@ class SearchCellTests(unittest.TestCase):
 
     def test_destructive_and_admin_cells_are_disabled_by_default(self):
         for notebook, cell_id in [
-            (BLOB, "cleanup"), (SP_INDEXED, "cleanup"), (SP_REMOTE, "cleanup"),
+            (BLOB, "cleanup"), (PUSH, "cleanup"), (SP_INDEXED, "cleanup"), (SP_REMOTE, "cleanup"),
             (BLOB, "run-indexer"), (SP_INDEXED, "run-indexer"),
             (SP_INDEXED, "create-app-registration"), (SP_INDEXED, "verify-federation"),
         ]:
@@ -306,7 +579,7 @@ class SearchCellTests(unittest.TestCase):
             self.assertEqual(self.http.mock_calls, [])
 
     def test_cleanup_uses_only_named_objects_and_propagates_authorization_errors(self):
-        for notebook, count in [(BLOB, 6), (SP_INDEXED, 4), (SP_REMOTE, 2)]:
+        for notebook, count in [(BLOB, 6), (PUSH, 1), (SP_INDEXED, 4), (SP_REMOTE, 2)]:
             self.http.delete.reset_mock()
             self.http.delete.return_value = http_response(404, {})
             run_cell(notebook, "cleanup", self.ns, {"CLEAN_UP = False": "CLEAN_UP = True"})

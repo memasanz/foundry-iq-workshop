@@ -7,7 +7,7 @@ from uuid import UUID
 
 from test_notebooks import code_cell, http_response
 
-KB = "06-foundry-iq-knowledge-base.ipynb"
+KB = "08-foundry-iq-knowledge-base.ipynb"
 
 
 def kb_namespace():

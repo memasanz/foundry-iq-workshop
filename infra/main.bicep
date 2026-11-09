@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 
 @description('Region for Foundry, AI Search and Blob Storage. Web IQ always uses global.')
-param location string = 'centralus'
+param location string = 'eastus'
 
 @minLength(3)
 @maxLength(20)
@@ -96,24 +96,6 @@ module searchFoundryAccess 'search-foundry-access.bicep' = {
   }
 }
 
-@description('Contact address APIM requires; defaults to a placeholder, used only for service notifications.')
-param apimPublisherEmail string = 'workshop@example.com'
-
-// Notebook 07: gateway in front of the knowledge base.
-module apim 'apim.bicep' = {
-  name: 'apim-${location}'
-  params: {
-    location: location
-    apimName: '${namePrefix}-apim-${suffix}'
-    searchName: data.outputs.searchServiceName
-    publisherEmail: apimPublisherEmail
-    tags: tags
-  }
-}
-
-output apimName string = apim.outputs.apimName
-output apimGatewayUrl string = apim.outputs.apimGatewayUrl
-output apimResourceId string = apim.outputs.apimResourceId
 output embeddingDeploymentName string = embeddingDeploymentName
 output webiqResourceId string = webiq.id
 output webiqAccountName string = webiq.name

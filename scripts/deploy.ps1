@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][string]$SubscriptionId,
     [string]$ResourceGroup = 'rg-iq-workshop',
-    [string]$Location = 'centralus',
+    [string]$Location = 'eastus',
     [string]$NamePrefix = 'iq-workshop',
     [string]$PrincipalId,
     [string]$ModelName = 'gpt-5-mini',
@@ -36,7 +36,7 @@ Write-Host "Search: $SearchSku, 1 replica/partition | Storage: Standard_LRS, Hot
 Invoke-Az bicep build --file (Join-Path $root 'infra\main.bicep') --stdout | Out-Null
 
 if (-not $WhatIf) {
-    foreach ($provider in @('Microsoft.WebIQ', 'Microsoft.CognitiveServices', 'Microsoft.Search', 'Microsoft.Storage', 'Microsoft.ApiManagement')) {
+    foreach ($provider in @('Microsoft.WebIQ', 'Microsoft.CognitiveServices', 'Microsoft.Search', 'Microsoft.Storage')) {
         Invoke-Az provider register --namespace $provider --subscription $SubscriptionId --wait | Out-Null
     }
     $groupExists = Invoke-Az group exists --name $ResourceGroup --subscription $SubscriptionId --output tsv
@@ -61,6 +61,25 @@ if ($WhatIf) {
 }
 
 $outputs = ($deployment | ConvertFrom-Json).properties.outputs
+$projectPrincipalId = Invoke-Az resource show --ids $outputs.projectResourceId.value `
+    --api-version '2025-06-01' --query identity.principalId --output tsv
+if ([string]::IsNullOrWhiteSpace($projectPrincipalId)) {
+    throw 'The deployed Foundry project has no system-assigned identity.'
+}
+$projectPrincipalId = $projectPrincipalId.Trim()
+$searchId = $outputs.searchResourceId.value
+$searchReaderRole = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions/1407120a-92aa-4202-b7e9-c0e197c71c8f"
+$searchAssignments = @(Invoke-Az role assignment list --scope $searchId --subscription $SubscriptionId `
+    --output json | ConvertFrom-Json)
+# The live project identity can differ from the ID returned during provisioning.
+if (-not ($searchAssignments | Where-Object {
+    $_.principalId -eq $projectPrincipalId -and $_.scope -eq $searchId -and $_.roleDefinitionId -eq $searchReaderRole
+})) {
+    Invoke-Az role assignment create --assignee-object-id $projectPrincipalId --assignee-principal-type ServicePrincipal `
+        --role $searchReaderRole --scope $searchId --subscription $SubscriptionId --output none | Out-Null
+}
+Write-Host 'Confirmed Search Index Data Reader for the live Foundry project identity.'
+
 $groupLocation = Invoke-Az group show --name $ResourceGroup --subscription $SubscriptionId --query location --output tsv
 $settings = [ordered]@{
     AZURE_SUBSCRIPTION_ID = $SubscriptionId
@@ -75,9 +94,6 @@ $settings = [ordered]@{
     AZURE_AI_ACCOUNT_NAME = $outputs.foundryAccountName.value
     AZURE_AI_MODEL_DEPLOYMENT_NAME = $outputs.modelDeploymentName.value
 AZURE_AI_EMBEDDING_DEPLOYMENT_NAME = $outputs.embeddingDeploymentName.value
-    APIM_NAME = $outputs.apimName.value
-    APIM_GATEWAY_URL = $outputs.apimGatewayUrl.value
-    APIM_RESOURCE_ID = $outputs.apimResourceId.value
     WEBIQ_CONNECTION_NAME = 'webiq-mcp'
     AZURE_SEARCH_SERVICE_NAME = $outputs.searchServiceName.value
     AZURE_SEARCH_ENDPOINT = $outputs.searchEndpoint.value

@@ -5,8 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import httpx
 import nbformat
 import requests
+from mcp import ClientSession
+from mcp.client.streamable_http import streamable_http_client
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,9 +48,13 @@ class NotebookStructureTests(unittest.TestCase):
         paths = list((ROOT / "notebooks").glob("*.ipynb"))
         self.assertEqual({path.name for path in paths}, {
             "01-web-iq-apis.ipynb", "02-foundry-web-iq-agent.ipynb",
-            "03-blob-indexer-skills.ipynb", "04-sharepoint-indexed.ipynb", "05-sharepoint-remote.ipynb",
-            "06-foundry-iq-knowledge-base.ipynb", "07-foundry-iq-apim.ipynb",
-                        "08-hosted-agent.ipynb",        })
+            "03-foundry-web-iq-toolbox.ipynb",
+            "04-blob-indexer-skills.ipynb", "05-push-chunks-vectors.ipynb",
+            "06-sharepoint-indexed.ipynb", "07-sharepoint-remote.ipynb",
+            "08-foundry-iq-knowledge-base.ipynb", "09-foundry-iq-apim.ipynb",
+            "10-hosted-agent.ipynb", "11-foundry-iq-toolbox-agent.ipynb",
+            "12-web-iq-authentication.ipynb",
+        })
         for path in paths:
             with self.subTest(notebook=path.name):
                 notebook = nbformat.read(path, as_version=4)
@@ -71,6 +78,26 @@ class DirectApiCellTests(unittest.TestCase):
         with patch("builtins.print") as output:
             exec(code_cell("01-web-iq-apis.ipynb", cell_id), self.ns)
         return output
+
+    def test_all_six_core_apis_run_with_defaults_and_example_configuration(self):
+        from dotenv import dotenv_values
+
+        for settings in ({}, dotenv_values(ROOT / ".env.example")):
+            with self.subTest(configuration="example" if settings else "defaults"):
+                self.ns["os"].getenv.side_effect = lambda name, default: settings.get(name, default)
+                self.post.return_value = http_response(
+                    200, {"webResults": [{"url": "https://example.com"}]},
+                )
+                for cell_id in ("web-search", "browse", "news", "images", "videos", "auto"):
+                    with self.subTest(cell=cell_id):
+                        self.post.reset_mock()
+                        self.run_cell(cell_id)
+                        self.post.assert_called_once()
+
+    def test_places_remains_optional_without_configuration(self):
+        self.ns["os"].getenv.side_effect = lambda name, default: default
+        self.run_cell("places")
+        self.post.assert_not_called()
 
     def test_search_endpoint_headers_and_payload(self):
         self.post.return_value = http_response(200, {"webResults": [{"url": "https://example.com"}]})
@@ -238,8 +265,104 @@ class DirectApiCellTests(unittest.TestCase):
         self.assertEqual(self.post.call_count, 2)
 
 
+class AgentDiscoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def discover(
+        self, pages, notebook_name="02-foundry-web-iq-agent.ipynb",
+        cell_id="discover", headers=None,
+    ):
+        headers = headers or {"x-apikey": "test-key"}
+        cursors = []
+
+        def handle(request):
+            for name, value in headers.items():
+                self.assertEqual(request.headers[name], value)
+            if "Authorization" in headers:
+                self.assertNotIn("x-apikey", request.headers)
+            if request.method == "GET":
+                return httpx.Response(405)
+            if request.method == "DELETE":
+                return httpx.Response(200)
+            message = json.loads(request.content)
+            if message["method"] == "initialize":
+                result = {
+                    "protocolVersion": message["params"]["protocolVersion"],
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "test-webiq", "version": "1"},
+                }
+            elif message["method"] == "notifications/initialized":
+                return httpx.Response(202)
+            elif message["method"] == "tools/list":
+                cursors.append(message.get("params", {}).get("cursor"))
+                result = pages[len(cursors) - 1]
+            else:
+                self.fail(f"Unexpected MCP method: {message['method']}")
+            return httpx.Response(
+                200, json={"jsonrpc": "2.0", "id": message["id"], "result": result},
+            )
+
+        client = httpx.AsyncClient(
+            headers=headers, transport=httpx.MockTransport(handle),
+        )
+        factory = Mock(return_value=client)
+        namespace = {
+            "httpx": SimpleNamespace(AsyncClient=factory),
+            "streamable_http_client": streamable_http_client,
+            "ClientSession": ClientSession,
+            "mcp_url": "https://api.microsoft.ai/v3/mcp",
+            "api_key": "test-key",
+            "credential": Mock(get_token=Mock(return_value=SimpleNamespace(token="foundry-token"))),
+            "toolbox_mcp_url": "https://example.services.ai.azure.com/api/projects/test/toolboxes/webiq/versions/1/mcp?api-version=v1",
+        }
+        source = code_cell(notebook_name, cell_id)
+        try:
+            with patch("builtins.print"):
+                await eval(compile(source, "discover", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT), namespace)
+        finally:
+            self.assertTrue(client.is_closed)
+        factory.assert_called_once_with(headers=headers, timeout=60)
+        return namespace, cursors
+
+    async def test_authenticated_discovery_uses_real_mcp_client_and_paginates(self):
+        def tool(name):
+            return {"name": name, "description": name, "inputSchema": {"type": "object"}}
+
+        namespace, cursors = await self.discover([
+            {"tools": [tool("news")], "nextCursor": "page-2"},
+            {"tools": [tool("web")]},
+        ])
+        self.assertEqual(namespace["available_names"], {"news", "web"})
+        self.assertEqual(cursors, [None, "page-2"])
+
+    async def test_discovery_without_web_tool_fails_explicitly(self):
+        with self.assertRaisesRegex(RuntimeError, "does not expose web search"):
+            await self.discover([{"tools": []}])
+
+    async def test_toolbox_discovery_uses_foundry_token_and_namespaced_tools(self):
+        namespace, cursors = await self.discover(
+            [
+                {"tools": [], "nextCursor": "page-2"},
+                {"tools": [{
+                    "name": "webiq___web", "description": "Web IQ web search",
+                    "inputSchema": {"type": "object"},
+                }]},
+            ],
+            notebook_name="03-foundry-web-iq-toolbox.ipynb",
+            cell_id="discover-toolbox", headers={"Authorization": "Bearer foundry-token"},
+        )
+        self.assertEqual(cursors, [None, "page-2"])
+        self.assertEqual(namespace["web_tool_name"], "webiq___web")
+        namespace["credential"].get_token.assert_called_once_with("https://ai.azure.com/.default")
+
+    async def test_toolbox_discovery_rejects_missing_namespaced_web_tool(self):
+        with self.assertRaisesRegex(RuntimeError, "does not expose webiq___web"):
+            await self.discover(
+                [{"tools": []}], notebook_name="03-foundry-web-iq-toolbox.ipynb",
+                cell_id="discover-toolbox", headers={"Authorization": "Bearer foundry-token"},
+            )
+
+
 class AgentHelperTests(unittest.TestCase):
-    def namespace(self, responses):
+    def namespace(self, responses, notebook_name="02-foundry-web-iq-agent.ipynb"):
         client = Mock()
         client.responses.create.side_effect = responses
         namespace = {
@@ -247,7 +370,7 @@ class AgentHelperTests(unittest.TestCase):
             "conversation": SimpleNamespace(id="conversation-1"),
             "agent_reference": {"type": "agent_reference", "name": "test", "version": "1"},
         }
-        exec(code_cell("02-foundry-web-iq-agent.ipynb", "agent-helper"), namespace)
+        exec(code_cell(notebook_name, "agent-helper"), namespace)
         return namespace
 
     def test_approval_continues_previous_response(self):

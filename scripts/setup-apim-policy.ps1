@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup for notebook 07: creates the APIM API and policy that sit in front of the Foundry IQ knowledge base.
+Facilitator pre-workshop setup for notebook 09: creates the APIM API and policy that sit in front of the Foundry IQ knowledge base.
 
 .DESCRIPTION
-Run scripts\setup-broker-app.ps1 first. This script then:
+Set APIM_RESOURCE_ID in .env and run scripts\setup-broker-app.ps1 first. This script then:
   1. stores the Web IQ API key as a secret APIM named value (it never reaches attendees or Search)
   2. creates the API 'iq-knowledge-base' (path /iq) in front of the Search service, with operations
        POST   /knowledgebases/{kbName}/retrieve
@@ -16,13 +16,14 @@ Run scripts\setup-broker-app.ps1 first. This script then:
        - injects the Web IQ key as the per-source control headers for -WebIqSourceName
        - removes any caller-supplied x-ms-enable-elevated-read header (which would bypass ACLs)
        - replaces Authorization with the APIM managed identity's Search token
-         (that identity holds Search Index Data Reader, assigned by Bicep)
+         (grant that identity Search Index Data Reader before running this script)
 Re-running is safe; everything is created or overwritten in place.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [string]$WebIqSourceName = 'iq-workshop-webiq',
     [securestring]$WebIqApiKey,
+    [string]$ApimResourceId,
     [string]$EnvironmentFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.azure'),
     [string]$SecretsFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env')
 )
@@ -51,13 +52,27 @@ if (-not (Test-Path -LiteralPath $EnvironmentFile -PathType Leaf)) {
     throw "Deployment settings not found: $EnvironmentFile. Run scripts\deploy.ps1 first."
 }
 $settings = Get-Content -LiteralPath $EnvironmentFile -Raw | ConvertFrom-StringData
-foreach ($name in 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_RESOURCE_GROUP', 'APIM_NAME', 'AZURE_SEARCH_ENDPOINT') {
+foreach ($name in 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_SEARCH_ENDPOINT') {
     if (-not $settings[$name]) { throw "$name is missing from $EnvironmentFile. Re-run scripts\deploy.ps1." }
 }
+if (-not $ApimResourceId -and (Test-Path -LiteralPath $SecretsFile)) {
+    $line = Select-String -LiteralPath $SecretsFile -Pattern '^\s*APIM_RESOURCE_ID\s*=\s*(.+)$' | Select-Object -First 1
+    if ($line) { $ApimResourceId = $line.Matches[0].Groups[1].Value.Trim().Trim('"').Trim("'") }
+}
+if (-not $ApimResourceId) { $ApimResourceId = $settings.APIM_RESOURCE_ID }
+if ($ApimResourceId -notmatch '^/subscriptions/([^/]+)/resourceGroups/[^/]+/providers/Microsoft\.ApiManagement/service/([^/]+)$') {
+    throw 'Set APIM_RESOURCE_ID in .env to the full resource ID of an existing APIM service, or supply -ApimResourceId.'
+}
+$apimSubscriptionId = $Matches[1]
+$apimName = $Matches[2]
 $context = Invoke-Az account show --subscription $settings.AZURE_SUBSCRIPTION_ID --output json | ConvertFrom-Json
 if ($context.tenantId -ne $settings.AZURE_TENANT_ID) { throw 'Azure login tenant does not match the deployment settings.' }
-$apimUrl = "https://management.azure.com/subscriptions/$($settings.AZURE_SUBSCRIPTION_ID)/resourceGroups/$($settings.AZURE_RESOURCE_GROUP)" +
-    "/providers/Microsoft.ApiManagement/service/$($settings.APIM_NAME)"
+$apimContext = Invoke-Az account show --subscription $apimSubscriptionId --output json | ConvertFrom-Json
+if ($apimContext.tenantId -ne $settings.AZURE_TENANT_ID) { throw 'APIM must belong to the workshop tenant.' }
+$apim = Invoke-Az resource show --ids $ApimResourceId --api-version '2024-05-01' --output json | ConvertFrom-Json
+if (-not $apim.identity.principalId) { throw 'Enable a system-assigned managed identity on the existing APIM service and grant it Search Index Data Reader.' }
+if (-not $apim.properties.gatewayUrl) { throw 'The existing APIM service has no gateway URL.' }
+$apimUrl = "https://management.azure.com$ApimResourceId"
 $version = 'api-version=2024-05-01'
 
 # The Web IQ key: parameter, then WEBIQ_API_KEY in .env, then a hidden prompt.
@@ -69,14 +84,14 @@ if (-not $WebIqApiKey) {
 $webIqKey = [System.Net.NetworkCredential]::new('', $WebIqApiKey).Password
 if (-not $webIqKey) { throw 'A Web IQ API key is required.' }
 
-if ($PSCmdlet.ShouldProcess($settings.APIM_NAME, 'Store the Web IQ key as secret named value webiq-api-key')) {
+if ($PSCmdlet.ShouldProcess($apimName, 'Store the Web IQ key as secret named value webiq-api-key')) {
     Invoke-Arm "namedValues/webiq-api-key?$version" @{
         properties = @{ displayName = 'webiq-api-key'; value = $webIqKey; secret = $true }
     }
 }
 Remove-Variable webIqKey
 
-if ($PSCmdlet.ShouldProcess($settings.APIM_NAME, 'Create API iq-knowledge-base')) {
+if ($PSCmdlet.ShouldProcess($apimName, 'Create API iq-knowledge-base')) {
     Invoke-Arm "apis/iq-knowledge-base?$version" @{
         properties = @{
             displayName = 'IQ workshop knowledge base broker'
@@ -148,13 +163,13 @@ $policy = @'
 </policies>
 '@.Replace('__WEBIQ__', $WebIqSourceName)
 
-if ($PSCmdlet.ShouldProcess($settings.APIM_NAME, 'Set the iq-knowledge-base policy')) {
+if ($PSCmdlet.ShouldProcess($apimName, 'Set the iq-knowledge-base policy')) {
     Invoke-Arm "apis/iq-knowledge-base/policies/policy?$version" @{ properties = @{ format = 'rawxml'; value = $policy } }
     Write-Host 'Policy set.'
 }
 
-$gateway = "https://$($settings.APIM_NAME).azure-api.net"
-Write-Host "`nAdd this to .env for notebook 07:"
+$gateway = $apim.properties.gatewayUrl.TrimEnd('/')
+Write-Host "`nAdd this to .env for notebook 09:"
 Write-Host "APIM_GATEWAY_URL=$gateway"
 Write-Host "WEBIQ_APIM_SOURCE_NAME=$WebIqSourceName"
 Write-Host "`nRetrieve URL: $gateway/iq/knowledgebases/<knowledge-base>/retrieve?api-version=2026-08-01-preview"

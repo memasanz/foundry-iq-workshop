@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup: Entra app registration for the SharePoint indexer (notebook 04; notebook 05 needs no app).
+Facilitator pre-workshop setup: Entra app registration for the SharePoint indexer (notebook 06; notebook 07 needs no app).
 
 .DESCRIPTION
 Creates (or reuses) the app, adds the Graph and SharePoint application permissions, and adds a
@@ -123,7 +123,7 @@ else {
     Write-Host 'Admin consent NOT granted. Re-run with -GrantAdminConsent, or approve in Entra > App registrations > API permissions.'
 }
 
-Write-Host "`nAdd these to .env for notebook 04:"
+Write-Host "`nAdd these to .env for notebook 06:"
 Write-Host "SHAREPOINT_APP_CLIENT_ID=$($app.appId)"
 Write-Host "SHAREPOINT_APP_OBJECT_ID=$($app.id)"
 Write-Host "SHAREPOINT_SEARCH_MI_CLIENT_ID=$miClientId"

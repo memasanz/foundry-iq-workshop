@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-Gives hosted agent identities read access to the Search service so their toolbox can call a knowledge base (notebook 08b).
+Gives hosted agent identities read access to the Search service so their toolbox can call a knowledge base (notebook 11).
 
 .DESCRIPTION
 A hosted agent calls the knowledge base with its own Entra identity (agentic identity). That identity is created
-when the agent version is deployed, so it cannot be granted in advance. Notebook 08b prints each attendee's
+when the agent version is deployed, so it cannot be granted in advance. notebook 11 prints each attendee's
 principal ID (and tries to assign the role itself). If the attendee lacks permission to assign roles, the
 facilitator runs this script with the printed IDs:
 

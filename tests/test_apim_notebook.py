@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 from test_notebooks import ROOT, code_cell, http_response
 
-APIM = "07-foundry-iq-apim.ipynb"
+APIM = "09-foundry-iq-apim.ipynb"
 BROKER_ID = "44444444-4444-4444-4444-444444444444"
 
 
@@ -66,7 +66,7 @@ class ApimNotebookTests(unittest.TestCase):
         self.assertIsNone(body["mcpServerParameters"]["authentication"])
         self.assertIn("/knowledgesources/iq-workshop-webiq", self.http.put.call_args.args[0])
 
-    def test_knowledge_base_reuses_notebook_06_sources(self):
+    def test_knowledge_base_reuses_notebook_08_sources(self):
         def get(url, **kwargs):
             if "/knowledgebases/" in url:
                 return http_response(200, {"models": [{"kind": "azureOpenAI"}], "answerInstructions": "x"})
@@ -80,9 +80,9 @@ class ApimNotebookTests(unittest.TestCase):
                          ["alice01-kb-blob", "alice01-kb-sharepoint", "iq-workshop-webiq"])
         self.assertEqual(self.ns["source_kinds"]["alice01-kb-sharepoint"], "indexedSharePoint")
 
-    def test_knowledge_base_requires_notebook_06(self):
+    def test_knowledge_base_requires_notebook_08(self):
         self.http.get.return_value = http_response(404, {})
-        with self.assertRaisesRegex(RuntimeError, "notebook 06"):
+        with self.assertRaisesRegex(RuntimeError, "notebook 08"):
             run("create-knowledge-base", self.ns)
 
     def test_ask_sends_only_the_broker_token_to_apim(self):

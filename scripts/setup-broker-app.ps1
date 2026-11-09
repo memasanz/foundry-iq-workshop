@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup for notebook 07: the Entra app registration that APIM uses to call Azure AI Search for each user.
+Facilitator pre-workshop setup for notebook 09: the Entra app registration that APIM uses to call Azure AI Search for each user.
 
 .DESCRIPTION
 Creates (or reuses) a middle-tier "broker" app:
@@ -11,7 +11,8 @@ Creates (or reuses) a middle-tier "broker" app:
   - creates a client secret and stores it ONLY in the APIM named value 'broker-client-secret'
     (never printed, never written to disk)
 Admin consent for the Search permission is opt-in (-GrantAdminConsent).
-Run scripts\deploy.ps1 first (it creates APIM). Then run scripts\setup-apim-policy.ps1.
+Run scripts\deploy.ps1 first, then set APIM_RESOURCE_ID in .env to an existing gateway.
+Then run scripts\setup-apim-policy.ps1 against the same gateway.
 Requires: az login as a user who can create app registrations.
 #>
 [CmdletBinding(SupportsShouldProcess)]
@@ -19,7 +20,9 @@ param(
     [string]$AppName = 'iq-workshop-apim-broker',
     [switch]$GrantAdminConsent,
     [switch]$RotateSecret,
-    [string]$EnvironmentFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.azure')
+    [string]$ApimResourceId,
+    [string]$EnvironmentFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.azure'),
+    [string]$SecretsFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,11 +58,24 @@ if (-not (Test-Path -LiteralPath $EnvironmentFile -PathType Leaf)) {
     throw "Deployment settings not found: $EnvironmentFile. Run scripts\deploy.ps1 first."
 }
 $settings = Get-Content -LiteralPath $EnvironmentFile -Raw | ConvertFrom-StringData
-foreach ($name in 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID', 'AZURE_RESOURCE_GROUP', 'APIM_NAME') {
-    if (-not $settings[$name]) { throw "$name is missing from $EnvironmentFile. Re-run scripts\deploy.ps1 to create APIM." }
+foreach ($name in 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID') {
+    if (-not $settings[$name]) { throw "$name is missing from $EnvironmentFile. Re-run scripts\deploy.ps1." }
 }
+if (-not $ApimResourceId -and (Test-Path -LiteralPath $SecretsFile)) {
+    $line = Select-String -LiteralPath $SecretsFile -Pattern '^\s*APIM_RESOURCE_ID\s*=\s*(.+)$' | Select-Object -First 1
+    if ($line) { $ApimResourceId = $line.Matches[0].Groups[1].Value.Trim().Trim('"').Trim("'") }
+}
+if (-not $ApimResourceId) { $ApimResourceId = $settings.APIM_RESOURCE_ID }
+if ($ApimResourceId -notmatch '^/subscriptions/([^/]+)/resourceGroups/[^/]+/providers/Microsoft\.ApiManagement/service/([^/]+)$') {
+    throw 'Set APIM_RESOURCE_ID in .env to the full resource ID of an existing APIM service, or supply -ApimResourceId.'
+}
+$apimSubscriptionId = $Matches[1]
+$apimName = $Matches[2]
 $context = Invoke-Az account show --subscription $settings.AZURE_SUBSCRIPTION_ID --output json | ConvertFrom-Json
 if ($context.tenantId -ne $settings.AZURE_TENANT_ID) { throw 'Azure login tenant does not match the deployment settings.' }
+$apimContext = Invoke-Az account show --subscription $apimSubscriptionId --output json | ConvertFrom-Json
+if ($apimContext.tenantId -ne $settings.AZURE_TENANT_ID) { throw 'APIM must belong to the workshop tenant.' }
+Invoke-Az resource show --ids $ApimResourceId --api-version '2024-05-01' --output none | Out-Null
 
 # Delegated permission to call Azure AI Search as the signed-in user, looked up by name.
 $searchApi = (Invoke-Graph GET "$graph/servicePrincipals?`$filter=servicePrincipalNames/any(n:n eq 'https://search.azure.com')&`$select=appId,oauth2PermissionScopes").value
@@ -119,14 +135,13 @@ else {
 }
 
 # The OBO exchange needs a client credential. Put it straight into APIM as a secret named value.
-$apimUrl = "https://management.azure.com/subscriptions/$($settings.AZURE_SUBSCRIPTION_ID)/resourceGroups/$($settings.AZURE_RESOURCE_GROUP)" +
-    "/providers/Microsoft.ApiManagement/service/$($settings.APIM_NAME)/namedValues"
+$apimUrl = "https://management.azure.com$ApimResourceId/namedValues"
 $secretExists = $true
 try { Invoke-Rest GET "$apimUrl/broker-client-secret?api-version=2024-05-01" $null 'https://management.azure.com' | Out-Null }
 catch { $secretExists = $false }
 
 if ($RotateSecret -or -not $secretExists) {
-    if ($PSCmdlet.ShouldProcess($settings.APIM_NAME, 'Create a client secret and store it as APIM named value broker-client-secret')) {
+    if ($PSCmdlet.ShouldProcess($apimName, 'Create a client secret and store it as APIM named value broker-client-secret')) {
         $secret = Invoke-Az ad app credential reset --id $app.appId --append --display-name 'apim-broker' --years 1 --query password --output tsv
         Invoke-Rest PUT "$apimUrl/broker-client-secret?api-version=2024-05-01" @{
             properties = @{ displayName = 'broker-client-secret'; value = $secret.Trim(); secret = $true }
@@ -137,7 +152,7 @@ if ($RotateSecret -or -not $secretExists) {
 }
 else { Write-Host 'APIM already has broker-client-secret. Use -RotateSecret to replace it.' }
 
-if ($PSCmdlet.ShouldProcess($settings.APIM_NAME, 'Store broker-client-id and tenant-id named values')) {
+if ($PSCmdlet.ShouldProcess($apimName, 'Store broker-client-id and tenant-id named values')) {
     Invoke-Rest PUT "$apimUrl/broker-client-id?api-version=2024-05-01" @{
         properties = @{ displayName = 'broker-client-id'; value = $app.appId }
     } 'https://management.azure.com' | Out-Null
@@ -146,6 +161,6 @@ if ($PSCmdlet.ShouldProcess($settings.APIM_NAME, 'Store broker-client-id and ten
     } 'https://management.azure.com' | Out-Null
 }
 
-Write-Host "`nAdd this to .env for notebook 07:"
+Write-Host "`nAdd this to .env for notebook 09:"
 Write-Host "BROKER_APP_CLIENT_ID=$($app.appId)"
 Write-Host 'Next: run scripts\setup-apim-policy.ps1'
