@@ -254,11 +254,9 @@ What it does, in order (safe to re-run; it reuses the app by name and preserves 
 5. With `-GrantAdminConsent`, grants tenant admin consent. Otherwise approve it in Entra > App registrations > API permissions.
 6. Prints the three values for `.env` (`SHAREPOINT_APP_CLIENT_ID`, `SHAREPOINT_APP_OBJECT_ID`, `SHAREPOINT_SEARCH_MI_CLIENT_ID`).
 
-**One manual step remains:** a SharePoint admin must grant the app access to the workshop site. `Sites.Selected` gives no access until a site is granted. The script prints the command:
+With `-SiteUrl`, the script resolves the site, grants the **ingestion app** site-scoped **FullControl** through Microsoft Graph, and reads the grant back to verify it. Existing FullControl grants are reused. It does not create another app or require PnP PowerShell. Without `-SiteUrl`, it configures only the app and warns that site access is still outstanding. `-WhatIf` makes no changes.
 
-```powershell
-Grant-PnPEntraIDAppSitePermission -AppId <app-id> -DisplayName 'iq-workshop-sharepoint-indexer' -Site '<site url>' -Permissions FullControl
-```
+The signed-in Azure CLI caller must be authorized to grant site access: Microsoft Graph delegated **Sites.FullControl.All**, **SharePoint Administrator or higher**, and membership of the target site. An Azure Owner role or ownership of the ingestion app is not enough. The script checks site access before making app changes and stops with an explanation if the caller is unauthorized; it cannot grant itself those rights. These are permissions of the caller performing setup, not an additional tenant-wide permission requested for the ingestion app. If an existing site grant has a lower role, the script stops rather than creating a duplicate or revoking it; an authorized administrator must upgrade it through an approved workflow (Graph permission updates require application authentication).
 
 `FullControl` on a dedicated test site is needed for the document-level permission (ACL) lab; `Read` is enough for content-only indexing. Caveat: Graph `Files.Read.All` is tenant-wide read, so this is not strict site-only isolation. Use a test tenant or non-sensitive content. The notebook's own app-creation and federation-check cells stay disabled by default; this script replaces them for facilitators.
 

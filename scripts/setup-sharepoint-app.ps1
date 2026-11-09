@@ -5,14 +5,20 @@ Facilitator pre-workshop setup: Entra app registration for the SharePoint indexe
 .DESCRIPTION
 Creates (or reuses) the app, adds the Graph and SharePoint application permissions, and adds a
 federated credential that trusts the Search service's system-assigned managed identity. No client
-secret is created. Admin consent is opt-in (-GrantAdminConsent). The per-site grant is printed
-because it needs SharePoint admin rights that Azure CLI tokens usually lack.
+secret is created. Admin consent is opt-in (-GrantAdminConsent). When SiteUrl is supplied, grants
+and verifies FullControl for the ingestion app on that site through Microsoft Graph.
 Requires: az login as a user who can create app registrations (and, for consent, a privileged role).
+Site grants also require Graph Sites.FullControl.All delegated permission on the caller's token,
+a SharePoint Administrator (or higher) role, and membership of the target site.
 
 .PARAMETER AppName
 Exact display name of an existing app registration to configure, or a new app registration to
 create in the deployment tenant. Defaults to iq-workshop-sharepoint-indexer. Existing API
 permissions are preserved. Multiple apps with the same name cause an error.
+
+.PARAMETER SiteUrl
+SharePoint HTTPS site URL to authorize for the ingestion app. Grants site-scoped FullControl
+for notebook 07's ACL ingestion. Omit to configure the app without changing site access.
 
 .EXAMPLE
 .\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -WhatIf
@@ -71,6 +77,32 @@ $tenantId = $settings.AZURE_TENANT_ID
 $searchId = $settings.AZURE_SEARCH_RESOURCE_ID
 $context = Invoke-Az account show --subscription $settings.AZURE_SUBSCRIPTION_ID --output json | ConvertFrom-Json
 if ($context.tenantId -ne $tenantId) { throw 'Azure login tenant does not match the deployment settings.' }
+
+$sitePermissions = @()
+if ($PSBoundParameters.ContainsKey('SiteUrl')) {
+    $siteUri = $null
+    if (-not [Uri]::TryCreate($SiteUrl, [UriKind]::Absolute, [ref]$siteUri) -or
+        $siteUri.Scheme -ne 'https' -or -not $siteUri.Host.EndsWith('.sharepoint.com') -or
+        $siteUri.UserInfo -or $siteUri.Port -ne 443 -or $siteUri.Query -or $siteUri.Fragment) {
+        throw 'SiteUrl must be a public-cloud SharePoint HTTPS site URL, not a sharing link.'
+    }
+    try {
+        $sitePath = $siteUri.AbsolutePath.TrimEnd('/')
+        if (-not $sitePath) { $sitePath = '/' }
+        $site = Invoke-Graph GET "$graph/sites/$($siteUri.Host):$sitePath"
+        if (-not $site.id) { throw 'Graph did not return a site ID.' }
+        $sitePermissionsUrl = "$graph/sites/$($site.id)/permissions"
+        $nextPage = $sitePermissionsUrl
+        do {
+            $page = Invoke-Graph GET $nextPage
+            $sitePermissions += @($page.value)
+            $nextPage = $page.'@odata.nextLink'
+        } while ($nextPage)
+    }
+    catch {
+        throw "Cannot inspect site access for $SiteUrl. The signed-in caller needs Graph Sites.FullControl.All delegated permission, SharePoint Administrator (or higher), and site membership. Entra app ownership and Azure subscription Owner are not sufficient. No app or site changes were made. Details: $($_.Exception.Message)"
+    }
+}
 
 # The Search service identity is what the app will trust.
 $search = Invoke-Az resource show --ids $searchId --output json | ConvertFrom-Json
@@ -160,9 +192,34 @@ Write-Host "SHAREPOINT_APP_CLIENT_ID=$($app.appId)"
 Write-Host "SHAREPOINT_APP_OBJECT_ID=$($app.id)"
 Write-Host "SHAREPOINT_SEARCH_MI_CLIENT_ID=$miClientId"
 
-Write-Host "`nStill required: grant the app access to the workshop site (SharePoint admin, one time):"
-$site = if ($SiteUrl) { $SiteUrl } else { '<https://tenant.sharepoint.com/sites/workshop>' }
-$quotedAppName = $AppName.Replace("'", "''")
-$quotedSite = $site.Replace("'", "''")
-Write-Host "Grant-PnPEntraIDAppSitePermission -AppId $($app.appId) -DisplayName '$quotedAppName' -Site '$quotedSite' -Permissions FullControl"
+if ($SiteUrl) {
+    $matchingGrants = @($sitePermissions | Where-Object {
+        $identities = @($_.grantedToIdentitiesV2) + @($_.grantedToIdentities)
+        @($identities | Where-Object { $_.application.id -eq $app.appId }).Count -gt 0
+    })
+    if ($matchingGrants | Where-Object { 'fullcontrol' -in $_.roles }) {
+        Write-Host "Site FullControl already granted to $AppName on $SiteUrl."
+    }
+    elseif ($matchingGrants.Count) {
+        throw "The app already has a site grant without FullControl on $SiteUrl. No duplicate grant was created. Have an authorized administrator upgrade that permission using an approved workflow; Graph permission updates require application authentication."
+    }
+    elseif ($PSCmdlet.ShouldProcess("$AppName on $SiteUrl", 'Grant site-scoped FullControl for ACL ingestion')) {
+        $grant = Invoke-Graph POST $sitePermissionsUrl @{
+            roles = @('fullcontrol')
+            grantedToIdentities = @(@{ application = @{ id = $app.appId; displayName = $AppName } })
+        }
+        if (-not $grant.id) { throw 'The site grant response did not contain a permission ID; site access is not verified.' }
+        $grantId = [Uri]::EscapeDataString($grant.id)
+        $verified = Invoke-Graph GET "$sitePermissionsUrl/$grantId"
+        $identities = @($verified.grantedToIdentitiesV2) + @($verified.grantedToIdentities)
+        if ('fullcontrol' -notin $verified.roles -or
+            -not ($identities | Where-Object { $_.application.id -eq $app.appId })) {
+            throw 'Site FullControl could not be verified for the ingestion app.'
+        }
+        Write-Host "Site FullControl granted and verified for $AppName on $SiteUrl."
+    }
+}
+else {
+    Write-Warning 'Site access was not configured. Re-run with -SiteUrl to grant the ingestion app access to the workshop site.'
+}
 Write-Warning 'Files.Read.All is tenant-wide read; use a dedicated test tenant or site and non-sensitive content.'

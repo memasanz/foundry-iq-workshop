@@ -519,6 +519,16 @@ class SearchCellTests(unittest.TestCase):
         self.assertNotIn("parent_id", mapping)
         self.assertNotIn("chunk_id", mapping)
 
+    def test_sharepoint_acl_source_path_is_present_on_every_chunk(self):
+        run_cell(SP_INDEXED, "create-index", self.ns)
+        fields = {field["name"]: field for field in self.ns["index"]["fields"]}
+        self.assertEqual(fields["metadata_spo_item_path"]["type"], "Edm.String")
+        run_cell(SP_INDEXED, "create-skillset", self.ns)
+        selectors = self.ns["skillset"]["indexProjections"]["selectors"]
+        for selector in selectors:
+            mapping = {item["name"]: item["source"] for item in selector["mappings"]}
+            self.assertEqual(mapping["metadata_spo_item_path"], "/document/metadata_spo_item_path")
+
     def test_indexers_connect_skillset_and_reject_failed_items(self):
         for notebook in (BLOB, CU, SP_INDEXED):
             with self.subTest(notebook=notebook):

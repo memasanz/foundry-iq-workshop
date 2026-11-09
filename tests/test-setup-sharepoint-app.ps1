@@ -10,6 +10,10 @@ AZURE_SEARCH_RESOURCE_ID=/subscriptions/test-subscription/resourceGroups/test/pr
 $global:TestAppMatches = @()
 $global:TestAppWrites = [System.Collections.Generic.List[object]]::new()
 $global:TestAppFilter = ''
+$global:TestSitePermissions = @()
+$global:TestSiteNextPage = @()
+$global:TestSiteDenied = $false
+$global:TestVerifiedGrant = $null
 
 function global:az {
     $arguments = @($args)
@@ -30,6 +34,36 @@ function global:az {
                 if ($method -eq 'POST' -and $path -eq '/v1.0/applications') {
                     @{ id = 'app-object'; appId = 'app-client' } | ConvertTo-Json -Compress
                 }
+                elseif ($method -eq 'POST' -and $path -eq '/v1.0/sites/site-id/permissions') {
+                    $grant = @{ id = 'site-grant'; roles = $body.roles; grantedToIdentitiesV2 = $body.grantedToIdentities }
+                    $global:TestSitePermissions += $grant
+                    $grant | ConvertTo-Json -Depth 10 -Compress
+                }
+            }
+            elseif ($path -eq '/v1.0/sites/contoso.sharepoint.com:/sites/workshop') {
+                @{ id = 'site-id' } | ConvertTo-Json -Compress
+            }
+            elseif ($path -eq '/v1.0/sites/site-id/permissions') {
+                if ($global:TestSiteDenied) {
+                    $global:LASTEXITCODE = 1
+                    return
+                }
+                if ($query -eq '?page=2') {
+                    @{ value = @($global:TestSiteNextPage) } | ConvertTo-Json -Depth 10 -Compress
+                }
+                else {
+                    $page = @{ value = @($global:TestSitePermissions) }
+                    if ($global:TestSiteNextPage.Count) {
+                        $page['@odata.nextLink'] = 'https://graph.microsoft.com/v1.0/sites/site-id/permissions?page=2'
+                    }
+                    $page | ConvertTo-Json -Depth 10 -Compress
+                }
+            }
+            elseif ($path -eq '/v1.0/sites/site-id/permissions/site-grant') {
+                if ($null -ne $global:TestVerifiedGrant) {
+                    $global:TestVerifiedGrant | ConvertTo-Json -Depth 10 -Compress
+                }
+                else { $global:TestSitePermissions[-1] | ConvertTo-Json -Depth 10 -Compress }
             }
             elseif ($path -eq '/v1.0/servicePrincipals/search-principal') {
                 @{ id = 'search-principal'; appId = 'search-client' } | ConvertTo-Json -Compress
@@ -101,7 +135,6 @@ try {
     Assert-Equal $graphAccess.Count 3 'Existing permissions must be preserved without duplicating required roles'
     Assert-Equal @($graphAccess | Where-Object { $_.id -eq 'existing-delegated-permission' -and $_.type -eq 'Scope' }).Count 1 'Delegated permissions must survive reuse'
     Assert-Equal @($merged | Where-Object { $_.resourceAppId -eq 'another-api' }).Count 1 'Other APIs must survive reuse'
-    Assert-Equal @($messages | Where-Object { $_.MessageData.ToString() -like "*-DisplayName 'Workshop''s App & Search'*" }).Count 1 'The printed site grant must quote the selected app name safely'
 
     $global:TestAppMatches[0].requiredResourceAccess = $merged
     $global:TestAppWrites.Clear()
@@ -135,12 +168,93 @@ try {
         $failed = $true
     }
     Assert-Equal $failed $true 'Whitespace-only app names must be rejected'
-    Write-Host 'SharePoint app checks passed: new/default/existing names, permission preservation, special characters, duplicates and WhatIf.'
+
+    $siteUrl = 'https://contoso.sharepoint.com/sites/workshop'
+    $global:TestAppMatches = @(@{ id = 'app-object'; appId = 'app-client'; requiredResourceAccess = @() })
+    $global:TestAppWrites.Clear()
+    & $scriptPath -EnvironmentFile $fixture.FullName -AppName $appName -SiteUrl $siteUrl | Out-Null
+    $siteWrites = @($global:TestAppWrites | Where-Object { $_.Path -eq '/v1.0/sites/site-id/permissions' })
+    Assert-Equal $siteWrites.Count 1 'SiteUrl must cause a direct site grant'
+    Assert-Equal $siteWrites[0].Body.roles[0] 'fullcontrol' 'ACL ingestion must receive site-scoped FullControl'
+    Assert-Equal $siteWrites[0].Body.grantedToIdentities[0].application.id 'app-client' 'The grant must target the ingestion app'
+    Assert-Equal $siteWrites[0].Body.grantedToIdentities[0].application.displayName $appName 'The grant must use the selected app name'
+
+    $global:TestAppWrites.Clear()
+    & $scriptPath -EnvironmentFile $fixture.FullName -AppName $appName -SiteUrl $siteUrl | Out-Null
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 'Reruns must reuse an existing FullControl grant'
+
+    $global:TestSiteNextPage = $global:TestSitePermissions
+    $global:TestSitePermissions = @(@{
+        id = 'unrelated'; roles = @('fullcontrol')
+        grantedToIdentitiesV2 = @(@{ application = @{ id = 'another-app' } })
+    })
+    $global:TestAppWrites.Clear()
+    & $scriptPath -EnvironmentFile $fixture.FullName -AppName $appName -SiteUrl $siteUrl | Out-Null
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 'Existing grants must be found on later pages'
+
+    $global:TestSiteNextPage = @()
+    $global:TestSitePermissions = @(@{
+        id = 'unrelated'; roles = @('fullcontrol')
+        grantedToIdentities = @(@{ application = @{ id = 'another-app' } })
+    })
+    $global:TestAppWrites.Clear()
+    & $scriptPath -EnvironmentFile $fixture.FullName -AppName $appName -SiteUrl $siteUrl -WhatIf | Out-Null
+    Assert-Equal $global:TestAppWrites.Count 0 'WhatIf must not modify apps or grant site access'
+
+    & $scriptPath -EnvironmentFile $fixture.FullName -AppName $appName -SiteUrl $siteUrl | Out-Null
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -eq '/v1.0/sites/site-id/permissions' }).Count 1 'Another app grant must not suppress the ingestion app grant'
+
+    $global:TestSiteDenied = $true
+    $global:TestAppWrites.Clear()
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike 'Cannot inspect site access*Sites.FullControl.All*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Unauthorized callers must receive actionable site permission guidance'
+    Assert-Equal $global:TestAppWrites.Count 0 'Site authorization must be checked before app changes'
+    $global:TestSiteDenied = $false
+
+    $global:TestSitePermissions = @(@{
+        id = 'existing-read'; roles = @('read')
+        grantedToIdentities = @(@{ application = @{ id = 'app-client' } })
+    })
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike 'The app already has a site grant without FullControl*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Existing lower-role grants must not be silently duplicated or revoked'
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '/v1.0/sites/*' }).Count 0 'Lower-role grants must remain unchanged'
+
+    $global:TestSitePermissions = @()
+    $global:TestVerifiedGrant = @{ roles = @('read'); grantedToIdentitiesV2 = @(@{ application = @{ id = 'app-client' } }) }
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl $siteUrl | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike 'Site FullControl could not be verified*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'The script must verify the granted role rather than claiming success'
+
+    $global:TestAppWrites.Clear()
+    $failed = $false
+    try { & $scriptPath -EnvironmentFile $fixture.FullName -SiteUrl 'https://example.com/sites/workshop' | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike 'SiteUrl must be*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Non-SharePoint site URLs must be rejected'
+    Assert-Equal $global:TestAppWrites.Count 0 'Invalid URLs must not change the app'
+    Write-Host 'SharePoint app checks passed: names, preserved permissions, site grants, verification, pagination, authorization and WhatIf.'
 }
 finally {
     Remove-Item -LiteralPath $fixture.FullName
     Remove-Item Function:\az
     Remove-Variable TestAppMatches, TestAppWrites, TestAppFilter -Scope Global
+    Remove-Variable TestSitePermissions, TestSiteNextPage, TestSiteDenied, TestVerifiedGrant -Scope Global
 }
 
 if ($env:OS -eq 'Windows_NT') {
