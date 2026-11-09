@@ -46,16 +46,18 @@ def http_response(status, data, headers=None):
 class NotebookStructureTests(unittest.TestCase):
     def test_notebook_schema_syntax_and_clean_outputs(self):
         paths = list((ROOT / "notebooks").glob("*.ipynb"))
-        self.assertEqual({path.name for path in paths}, {
+        required = {
             "01-web-iq-apis.ipynb", "02-foundry-web-iq-agent.ipynb",
             "03-foundry-web-iq-toolbox.ipynb",
-            "04-blob-indexer-skills.ipynb", "05-push-chunks-vectors.ipynb",
-            "06-sharepoint-indexed.ipynb", "07-sharepoint-remote.ipynb",
-            "08-foundry-iq-knowledge-base.ipynb", "09-foundry-iq-apim.ipynb",
-            "10-hosted-agent.ipynb", "11-foundry-iq-toolbox-agent.ipynb",
-            "12-web-iq-authentication.ipynb",
-        })
-        for path in paths:
+            "04-blob-indexer-skills.ipynb", "05-blob-content-understanding.ipynb",
+            "06-push-chunks-vectors.ipynb",
+            "07-sharepoint-indexed.ipynb", "08-sharepoint-remote.ipynb",
+            "09-foundry-iq-knowledge-base.ipynb", "10-foundry-iq-apim.ipynb",
+            "11-hosted-agent.ipynb", "12-foundry-iq-toolbox-agent.ipynb",
+            "13-web-iq-authentication.ipynb",
+        }
+        self.assertEqual(required, {path.name for path in paths})
+        for path in sorted(ROOT / "notebooks" / name for name in required):
             with self.subTest(notebook=path.name):
                 notebook = nbformat.read(path, as_version=4)
                 nbformat.validate(notebook)

@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 from test_notebooks import ROOT, code_cell, http_response
 
-APIM = "09-foundry-iq-apim.ipynb"
+APIM = "10-foundry-iq-apim.ipynb"
 BROKER_ID = "44444444-4444-4444-4444-444444444444"
 
 
@@ -82,7 +82,7 @@ class ApimNotebookTests(unittest.TestCase):
 
     def test_knowledge_base_requires_notebook_08(self):
         self.http.get.return_value = http_response(404, {})
-        with self.assertRaisesRegex(RuntimeError, "notebook 08"):
+        with self.assertRaisesRegex(RuntimeError, "notebook 09"):
             run("create-knowledge-base", self.ns)
 
     def test_ask_sends_only_the_broker_token_to_apim(self):

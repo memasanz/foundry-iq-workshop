@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 from test_notebooks import code_cell, http_response
 
-TOOLBOX = "11-foundry-iq-toolbox-agent.ipynb"
+TOOLBOX = "12-foundry-iq-toolbox-agent.ipynb"
 SEARCH = "https://workshop.search.windows.net"
 SEARCH_ID = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Search/searchServices/workshop"
 PRINCIPAL = "55555555-5555-5555-5555-555555555555"
@@ -49,7 +49,7 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
 
     def test_missing_prerequisite_notebook_is_reported(self):
         self.ns["requests"].get.return_value = http_response(404, {})
-        with self.assertRaisesRegex(RuntimeError, "notebook 08"):
+        with self.assertRaisesRegex(RuntimeError, "notebook 09"):
             exec(code_cell(TOOLBOX, "create-knowledge-base"), self.ns)
 
     def test_toolbox_tool_points_at_kb_mcp_with_shared_connection_and_is_promoted(self):

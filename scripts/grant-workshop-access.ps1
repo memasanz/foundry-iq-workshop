@@ -53,7 +53,7 @@ foreach ($user in $Users) {
         throw 'Users must contain Microsoft Entra user principal names or user object IDs.'
     }
     $identity = Invoke-Az ad user show --id $user --query '{id:id,userPrincipalName:userPrincipalName}' `
-        --subscription $subscriptionId --output json | ConvertFrom-Json
+        --output json | ConvertFrom-Json
     if (-not $identity.id) {
         throw "Microsoft Entra user could not be resolved: $user"
     }
@@ -72,7 +72,7 @@ if ($settings.WEBIQ_RESOURCE_ID -and $settings.WEBIQ_RESOURCE_ID.StartsWith("$gr
 }
 $assignments = @()
 foreach ($scope in ($grants | ForEach-Object { $_.Scope } | Select-Object -Unique)) {
-    $assignments += @(Invoke-Az role assignment list --scope $scope --all --subscription $subscriptionId `
+    $assignments += @(Invoke-Az role assignment list --scope $scope --subscription $subscriptionId `
         --output json | ConvertFrom-Json)
 }
 

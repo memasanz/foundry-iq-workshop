@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup for notebook 11: creates the shared Foundry project connection that lets toolboxes call Azure AI Search knowledge bases as the agent.
+Facilitator pre-workshop setup for notebook 12: creates the shared Foundry project connection that lets toolboxes call Azure AI Search knowledge bases as the agent.
 
 .DESCRIPTION
 Creates one project connection (default 'iq-workshop-search-mcp') of kind remote-tool with the

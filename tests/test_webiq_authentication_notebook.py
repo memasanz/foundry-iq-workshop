@@ -7,7 +7,7 @@ import requests
 from test_notebooks import code_cell, http_response
 
 
-NOTEBOOK = "12-web-iq-authentication.ipynb"
+NOTEBOOK = "13-web-iq-authentication.ipynb"
 
 
 class WebIqAuthenticationTests(unittest.TestCase):

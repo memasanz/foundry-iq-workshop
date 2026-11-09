@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from test_notebooks import code_cell
 
-HOSTED = "10-hosted-agent.ipynb"
+HOSTED = "11-hosted-agent.ipynb"
 
 
 class HostedAgentNotebookTests(unittest.TestCase):

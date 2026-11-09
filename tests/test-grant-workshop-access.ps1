@@ -35,6 +35,10 @@ function global:az {
                 ConvertTo-Json -Compress
         }
         'ad user' {
+            if ($arguments -contains '--subscription') {
+                $global:LASTEXITCODE = 1
+                return
+            }
             $id = $arguments[$arguments.IndexOf('--id') + 1]
             if (-not $global:TestDirectory.ContainsKey($id)) {
                 $global:LASTEXITCODE = 1
@@ -45,6 +49,10 @@ function global:az {
         'role assignment' {
             $scope = $arguments[$arguments.IndexOf('--scope') + 1]
             if ($arguments[2] -eq 'list') {
+                if ($arguments -contains '--scope' -and $arguments -contains '--all') {
+                    $global:LASTEXITCODE = 1
+                    return
+                }
                 $matches = @($global:TestAssignments | Where-Object { $_.scope -eq $scope })
                 ConvertTo-Json -InputObject $matches -Depth 5 -Compress
             }

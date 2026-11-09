@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup for notebook 09: creates the APIM API and policy that sit in front of the Foundry IQ knowledge base.
+Facilitator pre-workshop setup for notebook 10: creates the APIM API and policy that sit in front of the Foundry IQ knowledge base.
 
 .DESCRIPTION
 Set APIM_RESOURCE_ID in .env and run scripts\setup-broker-app.ps1 first. This script then:
@@ -169,7 +169,7 @@ if ($PSCmdlet.ShouldProcess($apimName, 'Set the iq-knowledge-base policy')) {
 }
 
 $gateway = $apim.properties.gatewayUrl.TrimEnd('/')
-Write-Host "`nAdd this to .env for notebook 09:"
+Write-Host "`nAdd this to .env for notebook 10:"
 Write-Host "APIM_GATEWAY_URL=$gateway"
 Write-Host "WEBIQ_APIM_SOURCE_NAME=$WebIqSourceName"
 Write-Host "`nRetrieve URL: $gateway/iq/knowledgebases/<knowledge-base>/retrieve?api-version=2026-08-01-preview"

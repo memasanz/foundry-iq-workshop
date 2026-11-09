@@ -15,9 +15,10 @@ from test_notebooks import ROOT, code_cell, http_response
 
 
 BLOB = "04-blob-indexer-skills.ipynb"
-PUSH = "05-push-chunks-vectors.ipynb"
-SP_INDEXED = "06-sharepoint-indexed.ipynb"
-SP_REMOTE = "07-sharepoint-remote.ipynb"
+CU = "05-blob-content-understanding.ipynb"
+PUSH = "06-push-chunks-vectors.ipynb"
+SP_INDEXED = "07-sharepoint-indexed.ipynb"
+SP_REMOTE = "08-sharepoint-remote.ipynb"
 
 
 def search_namespace():
@@ -43,6 +44,7 @@ def search_namespace():
         "remote_base_name": "alice01-remote-kb",
         "api_version": "2026-08-01-preview",
         "embedding_endpoint": "https://workshop.openai.azure.com",
+        "foundry_endpoint": "https://workshop.services.ai.azure.com",
         "embedding_deployment": "workshop-embedding",
         "embedding_model": "text-embedding-3-small",
         "embedding_dimensions": 1536,
@@ -137,6 +139,95 @@ class SearchCellTests(unittest.TestCase):
         self.assertNotIn("authIdentity", embedding)
         self.assertNotIn("cognitiveServices", self.ns["skillset"])
 
+    def test_content_understanding_extracts_file_and_embeds_section_content_with_page_projections(self):
+        run_cell(CU, "create-index", self.ns)
+        fields = {field["name"]: field for field in self.ns["index"]["fields"]}
+        run_cell(CU, "create-skillset", self.ns)
+        payload = self.http.put.call_args.kwargs["json"]
+        extraction, embedding, shaper = payload["skills"]
+        self.assertEqual(extraction["@odata.type"], "#Microsoft.Skills.Util.ContentUnderstandingSkill")
+        self.assertEqual(extraction["inputs"], [{"name": "file_data", "source": "/document/file_data"}])
+        self.assertEqual(extraction["outputs"], [{"name": "text_sections", "targetName": "text_sections"}])
+        self.assertIn("locationMetadata", extraction["extractionOptions"])
+        self.assertNotIn("#Microsoft.Skills.Text.SplitSkill",
+                         [skill["@odata.type"] for skill in payload["skills"]])
+        selector = payload["indexProjections"]["selectors"][0]
+        self.assertEqual(embedding["context"], selector["sourceContext"])
+        mappings = {item["name"]: item["source"] for item in selector["mappings"]}
+        self.assertEqual(embedding["inputs"], [{"name": "text", "source": mappings["chunk"]}])
+        self.assertEqual(mappings["chunk"], selector["sourceContext"] + "/content")
+        self.assertEqual(embedding["dimensions"], fields["text_vector"]["dimensions"])
+        for field, name in (("page_from", "pageNumberFrom"), ("page_to", "pageNumberTo"),
+                            ("ordinal_position", "ordinalPosition"), ("location_source", "source")):
+            self.assertIn(field, fields)
+            self.assertEqual(mappings[field], selector["sourceContext"] + "/locationMetadata/" + name)
+        self.assertNotIn("chunk_id", mappings)
+        self.assertNotIn("parent_id", mappings)
+        self.assertEqual(payload["cognitiveServices"], {
+            "@odata.type": "#Microsoft.Azure.Search.AIServicesByIdentity",
+            "subdomainUrl": self.ns["foundry_endpoint"], "identity": None,
+        })
+        self.assertNotIn("apiKey", embedding)
+        self.assertNotIn("authIdentity", embedding)
+        self.assertEqual(shaper["@odata.type"], "#Microsoft.Skills.Util.ShaperSkill")
+
+    def test_content_understanding_uploads_pdf_and_enables_original_file_input(self):
+        from datetime import datetime, timezone
+        from email.utils import format_datetime
+
+        self.ns.update(datetime=datetime, timezone=timezone, format_datetime=format_datetime,
+                       blob_prefix="alice01/content-understanding/")
+        run_cell(CU, "upload-blobs", self.ns)
+        upload = self.http.put.call_args
+        self.assertTrue(upload.args[0].endswith(
+            "/workshop-documents/alice01/content-understanding/travel-handbook.pdf"))
+        self.assertEqual(upload.kwargs["headers"]["Content-Type"], "application/pdf")
+        self.assertTrue(upload.kwargs["data"].startswith(b"%PDF-"))
+        self.http.get.return_value = http_response(404, {})
+        run_cell(CU, "create-indexer", self.ns)
+        configuration = self.http.put.call_args.kwargs["json"]["parameters"]["configuration"]
+        self.assertTrue(configuration["allowSkillsetToReadFileData"])
+        self.assertEqual(configuration["dataToExtract"], "allMetadata")
+        self.assertEqual(configuration["indexedFileNameExtensions"], ".pdf")
+
+    def test_content_understanding_keeps_valid_page_ranges_and_rejects_missing_or_invalid_locations(self):
+        valid = {"chunk_id": "sample", "page_from": 1, "page_to": 2}
+        self.http.post.return_value = http_response(200, {"value": [valid], "@odata.count": 1})
+        run_cell(CU, "inspect-chunks", self.ns)
+        self.assertEqual(self.ns["chunks"], [valid])
+        for pages in ({}, {"page_from": 2, "page_to": 1}, {"page_from": 1, "page_to": 3}):
+            with self.subTest(pages=pages):
+                self.http.post.return_value = http_response(200, {"value": [pages]})
+                with self.assertRaisesRegex(RuntimeError, "valid page ranges"):
+                    run_cell(CU, "inspect-chunks", self.ns)
+
+    def test_content_understanding_retrieval_rejects_empty_and_partial_results(self):
+        for body in ({"value": []}, {"@search.semanticPartialResponseReason": "capacityOverloaded"}):
+            self.http.post.return_value = http_response(200, body)
+            with self.assertRaises(RuntimeError):
+                run_cell(CU, "query-semantic-hybrid", self.ns)
+        self.http.post.return_value = http_response(200, {"value": [{"chunk": "evidence"}]})
+        run_cell(CU, "query-semantic-hybrid", self.ns)
+        request = self.http.post.call_args.kwargs["json"]
+        self.assertEqual(request["queryType"], "semantic")
+        self.assertIn("page_from", request["select"])
+        self.assertIn("page_to", request["select"])
+        self.assertEqual(request["vectorQueries"][0]["kind"], "text")
+
+    def test_content_understanding_cleanup_deletes_only_its_objects_and_sample(self):
+        self.ns.update(
+            blob_prefix="alice01/content-understanding/",
+            sample_files=[ROOT / "data" / "search" / "travel-handbook.pdf"],
+            index_name="alice01-cu-chunks", data_source_name="alice01-cu-source",
+            skillset_name="alice01-cu-skills", indexer_name="alice01-cu-indexer",
+        )
+        run_cell(CU, "cleanup", self.ns)
+        self.http.delete.assert_not_called()
+        run_cell(CU, "cleanup", self.ns, {"CLEAN_UP = False": "CLEAN_UP = True"})
+        self.assertEqual(self.http.delete.call_count, 5)
+        for call in self.http.delete.call_args_list:
+            self.assertTrue("-cu-" in call.args[0] or "/alice01/content-understanding/travel-handbook.pdf" in call.args[0])
+
     def test_both_vector_indexes_connect_profile_vectorizer_and_semantic_fields(self):
         self.ns["embedding_dimensions"] = 768
         schemas = []
@@ -181,12 +272,12 @@ class SearchCellTests(unittest.TestCase):
         with patch.dict(os.environ, settings, clear=True), patch("dotenv.load_dotenv"), \
                 patch("azure.identity.AzureCliCredential") as credential, \
                 patch("azure.identity.get_bearer_token_provider") as provider:
-            for notebook in (BLOB, PUSH):
+            for notebook in (BLOB, PUSH, CU):
                 namespace = {}
-                run_cell(notebook, "configuration", namespace)
+                run_cell(notebook, "setup" if notebook == CU else "configuration", namespace)
                 names.append(namespace["index_name"])
                 self.assertEqual(namespace["embedding_endpoint"], self.ns["embedding_endpoint"])
-            self.assertEqual(len(set(names)), 2)
+            self.assertEqual(len(set(names)), 3)
             provider.assert_any_call(
                 credential.return_value, "https://cognitiveservices.azure.com/.default",
             )
@@ -428,8 +519,8 @@ class SearchCellTests(unittest.TestCase):
         self.assertNotIn("parent_id", mapping)
         self.assertNotIn("chunk_id", mapping)
 
-    def test_both_indexers_connect_skillset_and_reject_failed_items(self):
-        for notebook in (BLOB, SP_INDEXED):
+    def test_indexers_connect_skillset_and_reject_failed_items(self):
+        for notebook in (BLOB, CU, SP_INDEXED):
             with self.subTest(notebook=notebook):
                 run_cell(notebook, "create-indexer", self.ns)
                 indexer = self.ns["indexer"]
@@ -440,7 +531,7 @@ class SearchCellTests(unittest.TestCase):
                 self.assertEqual(indexer["parameters"]["maxFailedItemsPerBatch"], 0)
 
     def test_indexer_creation_and_update_do_not_confuse_old_run_with_new_run(self):
-        for notebook in (BLOB, SP_INDEXED):
+        for notebook in (BLOB, CU, SP_INDEXED):
             self.http.post.reset_mock()
             self.http.get.return_value = http_response(404, {})
             run_cell(notebook, "create-indexer", self.ns)
@@ -456,7 +547,7 @@ class SearchCellTests(unittest.TestCase):
             self.assertIn("/run?", self.http.post.call_args.args[0])
 
     def test_running_indexer_is_not_updated(self):
-        for notebook in (BLOB, SP_INDEXED):
+        for notebook in (BLOB, CU, SP_INDEXED):
             self.http.put.reset_mock()
             self.http.get.return_value = http_response(200, {
                 "lastResult": {"status": "inProgress", "startTime": "active-run"},
@@ -466,7 +557,7 @@ class SearchCellTests(unittest.TestCase):
             self.http.put.assert_not_called()
 
     def test_http_errors_surface_without_retry_or_fabricated_success(self):
-        for notebook in (BLOB, SP_INDEXED):
+        for notebook in (BLOB, CU, SP_INDEXED):
             for status in (401, 403, 429, 503):
                 with self.subTest(notebook=notebook, status=status):
                     self.http.put.reset_mock()
@@ -476,7 +567,7 @@ class SearchCellTests(unittest.TestCase):
                     self.http.put.assert_called_once()
 
     def test_monitor_waits_for_completion_and_surfaces_warnings(self):
-        for notebook in (BLOB, SP_INDEXED):
+        for notebook in (BLOB, CU, SP_INDEXED):
             with self.subTest(notebook=notebook):
                 self.http.get.side_effect = [
                     http_response(200, {"lastResult": {"status": "inProgress"}}),
@@ -486,10 +577,10 @@ class SearchCellTests(unittest.TestCase):
                 ]
                 output = run_cell(notebook, "monitor-indexer", self.ns)
                 self.assertTrue(any("sample warning" in str(call) for call in output.call_args_list))
-        self.assertEqual(self.ns["time"].sleep.call_count, 2)
+        self.assertEqual(self.ns["time"].sleep.call_count, 3)
 
     def test_monitor_rejects_failures_and_partial_indexing(self):
-        for notebook in (BLOB, SP_INDEXED):
+        for notebook in (BLOB, CU, SP_INDEXED):
             for run in [
                 {"status": "transientFailure", "errorMessage": "source failed"},
                 {"status": "persistentFailure", "errorMessage": "source failed"},
@@ -502,7 +593,7 @@ class SearchCellTests(unittest.TestCase):
                         run_cell(notebook, "monitor-indexer", self.ns)
 
     def test_monitor_timeout_is_not_success(self):
-        for notebook in (BLOB, SP_INDEXED):
+        for notebook in (BLOB, CU, SP_INDEXED):
             self.http.get.reset_mock()
             self.ns["time"].sleep.reset_mock()
             self.http.get.return_value = http_response(200, {"lastResult": None})
@@ -512,7 +603,7 @@ class SearchCellTests(unittest.TestCase):
             self.assertEqual(self.ns["time"].sleep.call_count, 89)
 
     def test_monitor_does_not_accept_previous_run_success_after_rerun(self):
-        for notebook in (BLOB, SP_INDEXED):
+        for notebook in (BLOB, CU, SP_INDEXED):
             self.ns["previous_run_start"] = "old-run"
             self.http.get.side_effect = [
                 http_response(200, {"lastResult": {"status": "success", "startTime": "old-run"}}),
@@ -571,7 +662,7 @@ class SearchCellTests(unittest.TestCase):
     def test_destructive_and_admin_cells_are_disabled_by_default(self):
         for notebook, cell_id in [
             (BLOB, "cleanup"), (PUSH, "cleanup"), (SP_INDEXED, "cleanup"), (SP_REMOTE, "cleanup"),
-            (BLOB, "run-indexer"), (SP_INDEXED, "run-indexer"),
+            (CU, "cleanup"), (CU, "run-indexer"), (BLOB, "run-indexer"), (SP_INDEXED, "run-indexer"),
             (SP_INDEXED, "create-app-registration"), (SP_INDEXED, "verify-federation"),
         ]:
             self.http.reset_mock()
@@ -595,6 +686,7 @@ class SearchCellTests(unittest.TestCase):
     def test_rerun_can_reset_content_or_resync_acl_before_running(self):
         for notebook, flag, operation in [
             (BLOB, "RESET_BEFORE_RUN", "reset"),
+            (CU, "RESET_BEFORE_RUN", "reset"),
             (SP_INDEXED, "RESYNC_PERMISSIONS", "resync"),
         ]:
             self.http.post.reset_mock()
