@@ -232,6 +232,20 @@ These roles do not grant subscription/resource-group Contributor, Owner, role-as
 
 Notebook 07's **indexed** path needs an Entra app that Azure AI Search uses to read SharePoint. Run `scripts\setup-sharepoint-app.ps1` once, after deployment, as a user who can create app registrations or update the selected existing app (add `-GrantAdminConsent` only if you also hold a role that can consent). Attendees do not need Entra permissions. The **remote** path needs no app; it runs as each attendee (see notebook 08).
 
+**Permissions required by the person running the script:**
+
+| Operation | Required access |
+|---|---|
+| Create or update the ingestion app and its federated credential | Permission to register apps, or ownership/admin rights over the existing app, plus Graph authorization for the app-management operations |
+| Read Search's system-assigned managed identity | Azure **Reader** on the Search resource, or an inherited/broader role such as Contributor or Owner |
+| Grant site access with `-SiteUrl` | **SharePoint Administrator or Global Administrator**, plus membership of the target SharePoint site |
+| Authorize the site-permission Graph requests | The signed-in Azure CLI token must include delegated **`Sites.FullControl.All`** |
+| Grant tenant-wide consent with `-GrantAdminConsent` | **Privileged Role Administrator or Global Administrator**, because this app requests Microsoft Graph application permissions; Application Administrator and Cloud Application Administrator alone cannot consent to those Graph application permissions |
+
+These are the **caller's setup permissions**, not additional permissions assigned to the ingestion app. Azure subscription Owner alone does not grant SharePoint or Entra administration rights, and an administrator role does not automatically add the required Graph scope to a CLI token. Activate any required PIM roles and sign in with the required authorization before running the script.
+
+The Search identity lookup only reads its principal ID so the script can configure the app's secretless federated trust. It does not read Search documents or grant SharePoint access. Existing Contributor or Owner access at the resource, resource-group or subscription scope already covers that lookup; no extra Reader assignment is needed.
+
 Use `-AppName` for the app registration's **exact display name** in the deployment tenant. If one app matches, the script configures that app; if none matches, it creates a new single-tenant app with that name. If multiple apps match, it stops without changing them; use a unique display name. Omitting `-AppName` uses `iq-workshop-sharepoint-indexer`.
 
 ```powershell
@@ -256,7 +270,7 @@ What it does, in order (safe to re-run; it reuses the app by name and preserves 
 
 With `-SiteUrl`, the script resolves the site, grants the **ingestion app** site-scoped **FullControl** through Microsoft Graph, and reads the grant back to verify it. Existing FullControl grants are reused. It does not create another app or require PnP PowerShell. Without `-SiteUrl`, it configures only the app and warns that site access is still outstanding. `-WhatIf` makes no changes.
 
-The signed-in Azure CLI caller must be authorized to grant site access: Microsoft Graph delegated **Sites.FullControl.All**, **SharePoint Administrator or higher**, and membership of the target site. An Azure Owner role or ownership of the ingestion app is not enough. The script checks site access before making app changes and stops with an explanation if the caller is unauthorized; it cannot grant itself those rights. These are permissions of the caller performing setup, not an additional tenant-wide permission requested for the ingestion app. If an existing site grant has a lower role, the script stops rather than creating a duplicate or revoking it; an authorized administrator must upgrade it through an approved workflow (Graph permission updates require application authentication).
+The script checks site access before making app changes and stops with an explanation if the caller is unauthorized; it cannot grant itself the rights listed above. If an existing site grant has a lower role, the script stops rather than creating a duplicate or revoking it; an authorized administrator must upgrade it through an approved workflow (Graph permission updates require application authentication).
 
 `FullControl` on a dedicated test site is needed for the document-level permission (ACL) lab; `Read` is enough for content-only indexing. Caveat: Graph `Files.Read.All` is tenant-wide read, so this is not strict site-only isolation. Use a test tenant or non-sensitive content. The notebook's own app-creation and federation-check cells stay disabled by default; this script replaces them for facilitators.
 
