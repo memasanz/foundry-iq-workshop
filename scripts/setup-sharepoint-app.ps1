@@ -8,9 +8,21 @@ federated credential that trusts the Search service's system-assigned managed id
 secret is created. Admin consent is opt-in (-GrantAdminConsent). The per-site grant is printed
 because it needs SharePoint admin rights that Azure CLI tokens usually lack.
 Requires: az login as a user who can create app registrations (and, for consent, a privileged role).
+
+.PARAMETER AppName
+Exact display name of an existing app registration to configure, or a new app registration to
+create in the deployment tenant. Defaults to iq-workshop-sharepoint-indexer. Existing API
+permissions are preserved. Multiple apps with the same name cause an error.
+
+.EXAMPLE
+.\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -WhatIf
+
+.EXAMPLE
+.\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -SiteUrl 'https://contoso.sharepoint.com/sites/workshop'
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
+    [ValidateScript({ -not [string]::IsNullOrWhiteSpace($_) })]
     [string]$AppName = 'iq-workshop-sharepoint-indexer',
     [string]$SiteUrl,
     [switch]$GrantAdminConsent,
@@ -77,13 +89,26 @@ foreach ($permission in $permissions) {
     $requiredAccess += @{ resourceAppId = $permission.Api; resourceAccess = @($access) }
 }
 
-$existing = (Invoke-Graph GET "$graph/applications?`$filter=displayName eq '$AppName'&`$select=id,appId").value
-if ($existing.Count -gt 1) { throw "More than one app named $AppName exists. Remove duplicates first." }
+$appFilter = [Uri]::EscapeDataString("displayName eq '$($AppName.Replace("'", "''"))'")
+$existing = (Invoke-Graph GET "$graph/applications?`$filter=$appFilter&`$select=id,appId,requiredResourceAccess").value
+if ($existing.Count -gt 1) { throw "More than one app named $AppName exists. Use a unique app display name." }
 if ($existing.Count -eq 1) {
     $app = $existing[0]
     Write-Host "Reusing app $AppName ($($app.appId))."
+    $mergedAccess = @($app.requiredResourceAccess | Where-Object { $_ })
+    foreach ($required in $requiredAccess) {
+        $resource = $mergedAccess | Where-Object { $_.resourceAppId -eq $required.resourceAppId }
+        if ($resource) {
+            foreach ($access in $required.resourceAccess) {
+                if (-not ($resource.resourceAccess | Where-Object { $_.id -eq $access.id -and $_.type -eq $access.type })) {
+                    $resource.resourceAccess = @($resource.resourceAccess) + $access
+                }
+            }
+        }
+        else { $mergedAccess += $required }
+    }
     if ($PSCmdlet.ShouldProcess($AppName, 'Update required permissions')) {
-        Invoke-Graph PATCH "$graph/applications/$($app.id)" @{ requiredResourceAccess = $requiredAccess } | Out-Null
+        Invoke-Graph PATCH "$graph/applications/$($app.id)" @{ requiredResourceAccess = $mergedAccess } | Out-Null
     }
 }
 elseif ($PSCmdlet.ShouldProcess($AppName, 'Create app registration')) {
@@ -130,5 +155,7 @@ Write-Host "SHAREPOINT_SEARCH_MI_CLIENT_ID=$miClientId"
 
 Write-Host "`nStill required: grant the app access to the workshop site (SharePoint admin, one time):"
 $site = if ($SiteUrl) { $SiteUrl } else { '<https://tenant.sharepoint.com/sites/workshop>' }
-Write-Host "Grant-PnPEntraIDAppSitePermission -AppId $($app.appId) -DisplayName '$AppName' -Site '$site' -Permissions FullControl"
+$quotedAppName = $AppName.Replace("'", "''")
+$quotedSite = $site.Replace("'", "''")
+Write-Host "Grant-PnPEntraIDAppSitePermission -AppId $($app.appId) -DisplayName '$quotedAppName' -Site '$quotedSite' -Permissions FullControl"
 Write-Warning 'Files.Read.All is tenant-wide read; use a dedicated test tenant or site and non-sensitive content.'

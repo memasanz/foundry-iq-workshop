@@ -230,21 +230,27 @@ These roles do not grant subscription/resource-group Contributor, Owner, role-as
 
 ## 5. Set up the SharePoint app registration (facilitator, before the workshop)
 
-Notebook 07's **indexed** path needs an Entra app that Azure AI Search uses to read SharePoint. Run `scripts\setup-sharepoint-app.ps1` once, after deployment, as a user who can create app registrations (add `-GrantAdminConsent` only if you also hold a role that can consent). Attendees do not need Entra permissions. The **remote** path needs no app; it runs as each attendee (see notebook 08).
+Notebook 07's **indexed** path needs an Entra app that Azure AI Search uses to read SharePoint. Run `scripts\setup-sharepoint-app.ps1` once, after deployment, as a user who can create app registrations or update the selected existing app (add `-GrantAdminConsent` only if you also hold a role that can consent). Attendees do not need Entra permissions. The **remote** path needs no app; it runs as each attendee (see notebook 08).
+
+Use `-AppName` for the app registration's **exact display name** in the deployment tenant. If one app matches, the script configures that app; if none matches, it creates a new single-tenant app with that name. If multiple apps match, it stops without changing them; use a unique display name. Omitting `-AppName` uses `iq-workshop-sharepoint-indexer`.
 
 ```powershell
-.\scripts\setup-sharepoint-app.ps1 -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' -WhatIf  # preview
-.\scripts\setup-sharepoint-app.ps1 -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' -GrantAdminConsent
+# Existing app: use its exact display name.
+.\scripts\setup-sharepoint-app.ps1 -AppName 'Existing SharePoint Indexer' -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' -WhatIf
+.\scripts\setup-sharepoint-app.ps1 -AppName 'Existing SharePoint Indexer' -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' -GrantAdminConsent
+
+# New app: choose a name that does not already exist.
+.\scripts\setup-sharepoint-app.ps1 -AppName 'New Workshop SharePoint Indexer' -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop'
 ```
 
-What it does, in order (safe to re-run; it reuses the app by name):
+What it does, in order (safe to re-run; it reuses the app by name and preserves existing API permissions):
 
 1. Reads the Search service's system-assigned managed identity (from `.env.azure`).
-2. Creates the app `iq-workshop-sharepoint-indexer` and its service principal, single-tenant.
+2. Reuses the named app, or creates it as single-tenant, and ensures its service principal exists.
 3. Requests these **application** permissions, looked up by name:
    - Microsoft Graph: `Files.Read.All`, `Sites.Selected`
    - SharePoint: `Sites.Selected`, `User.Read.All`
-4. Adds a **federated credential** that trusts the Search managed identity. The app has **no client secret**; Search proves its identity with its managed identity.
+4. Adds a **federated credential** that trusts the Search managed identity. No client secret is created; Search proves its identity with its managed identity. Existing credentials on a reused app are left unchanged.
 5. With `-GrantAdminConsent`, grants tenant admin consent. Otherwise approve it in Entra > App registrations > API permissions.
 6. Prints the three values for `.env` (`SHAREPOINT_APP_CLIENT_ID`, `SHAREPOINT_APP_OBJECT_ID`, `SHAREPOINT_SEARCH_MI_CLIENT_ID`).
 
