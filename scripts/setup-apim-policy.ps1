@@ -41,7 +41,8 @@ function Invoke-Arm {
     param([string]$Path, $Body)
     $file = New-TemporaryFile
     try {
-        $Body | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $file -Encoding utf8
+        # Windows PowerShell's Set-Content -Encoding utf8 adds a BOM that az rest cannot parse.
+        [System.IO.File]::WriteAllText($file.FullName, ($Body | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
         Invoke-Az rest --method PUT --url "$apimUrl/$Path" --resource 'https://management.azure.com' `
             --headers 'Content-Type=application/json' --body "@$file" | Out-Null
     }
