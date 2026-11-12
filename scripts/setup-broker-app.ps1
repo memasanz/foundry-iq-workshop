@@ -101,7 +101,7 @@ else { return }
 # Expose user_impersonation, keeping its ID stable on re-runs, and pre-authorize Azure CLI.
 $scope = $app.api.oauth2PermissionScopes | Where-Object { $_.value -eq 'user_impersonation' }
 $scopeId = if ($scope) { $scope.id } else { [guid]::NewGuid().ToString() }
-if ($PSCmdlet.ShouldProcess($AppName, 'Set identifier URI, scope, pre-authorization and permissions')) {
+if ($PSCmdlet.ShouldProcess($AppName, 'Set identifier URI, scope and permissions')) {
     Invoke-Graph PATCH "$graph/applications/$($app.id)" @{
         identifierUris = @("api://$($app.appId)")
         requiredResourceAccess = $requiredAccess
@@ -114,6 +114,14 @@ if ($PSCmdlet.ShouldProcess($AppName, 'Set identifier URI, scope, pre-authorizat
                 userConsentDisplayName = 'Use the IQ workshop knowledge base as you'
                 userConsentDescription = 'Lets the app call the IQ workshop APIM gateway on your behalf.'
             })
+        }
+    } | Out-Null
+}
+
+# Graph validates pre-authorization against scopes already saved on the app.
+if ($PSCmdlet.ShouldProcess($AppName, 'Pre-authorize Azure CLI for the saved scope')) {
+    Invoke-Graph PATCH "$graph/applications/$($app.id)" @{
+        api = @{
             preAuthorizedApplications = @(@{ appId = $azureCliAppId; delegatedPermissionIds = @($scopeId) })
         }
     } | Out-Null
