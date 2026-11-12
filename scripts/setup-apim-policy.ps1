@@ -40,13 +40,20 @@ function Invoke-Az {
 function Invoke-Arm {
     param([string]$Path, $Body)
     $file = New-TemporaryFile
+    $responseFile = $null
     try {
+        $responseFile = New-TemporaryFile
         # Windows PowerShell's Set-Content -Encoding utf8 adds a BOM that az rest cannot parse.
         [System.IO.File]::WriteAllText($file.FullName, ($Body | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
+        # Save unused responses so BOM-prefixed policy XML never reaches the legacy console.
         Invoke-Az rest --method PUT --url "$apimUrl/$Path" --resource 'https://management.azure.com' `
-            --headers 'Content-Type=application/json' --body "@$file" | Out-Null
+            --headers 'Content-Type=application/json' --body "@$file" `
+            --output-file $responseFile.FullName | Out-Null
     }
-    finally { Remove-Item -LiteralPath $file -Force }
+    finally {
+        Remove-Item -LiteralPath $file -Force
+        if ($responseFile) { Remove-Item -LiteralPath $responseFile -Force }
+    }
 }
 
 if (-not (Test-Path -LiteralPath $EnvironmentFile -PathType Leaf)) {

@@ -43,7 +43,8 @@ function Invoke-Rest {
     if ($Body) {
         $file = New-TemporaryFile
         try {
-            $Body | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $file -Encoding utf8
+            # Windows PowerShell's Set-Content -Encoding utf8 adds a BOM that az rest cannot parse.
+            [System.IO.File]::WriteAllText($file.FullName, ($Body | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
             $arguments += @('--headers', 'Content-Type=application/json', '--body', "@$file")
             $result = Invoke-Az @arguments
         }

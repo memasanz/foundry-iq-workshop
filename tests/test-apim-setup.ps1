@@ -20,6 +20,8 @@ $global:TestApimTenant = $tenant
 $global:TestApimIdentity = '00000000-0000-0000-0000-000000000004'
 $global:TestApimCalls = [System.Collections.Generic.List[object]]::new()
 $global:TestApimWrites = [System.Collections.Generic.List[object]]::new()
+$global:TestBrokerExists = $true
+$global:TestBrokerScopes = @()
 $testKey = ConvertTo-SecureString 'synthetic-test-key' -AsPlainText -Force
 
 function global:az {
@@ -46,11 +48,39 @@ function global:az {
             $url = $arguments[$arguments.IndexOf('--url') + 1]
             if ($method -ne 'GET') {
                 $bodyPath = $arguments[$arguments.IndexOf('--body') + 1].Substring(1)
+                $bodyText = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($bodyPath))
+                Assert-Equal ($bodyText[0] -eq [char]0xfeff) $false 'Azure CLI JSON request files must not contain a UTF-8 BOM'
+                $body = $bodyText | ConvertFrom-Json
+                $responsePath = $null
+                if ($url -like 'https://management.azure.com/*/apis/iq-knowledge-base/policies/policy?api-version=*') {
+                    if ('--output-file' -notin $arguments) {
+                        throw 'Policy XML responses must bypass Azure CLI console output to avoid cp1252 encoding failures.'
+                    }
+                    $responsePath = $arguments[$arguments.IndexOf('--output-file') + 1]
+                    [System.IO.File]::WriteAllText($responsePath, '<policies />', [System.Text.UTF8Encoding]::new($true))
+                }
+                if ($url -eq 'https://graph.microsoft.com/v1.0/applications/broker-object' -and $method -eq 'PATCH') {
+                    foreach ($preAuthorized in $body.api.preAuthorizedApplications) {
+                        foreach ($scopeId in $preAuthorized.delegatedPermissionIds) {
+                            if ($scopeId -notin @($global:TestBrokerScopes.id)) {
+                                throw 'Pre-authorization must reference an already saved scope.'
+                            }
+                        }
+                    }
+                    if ($body.api.oauth2PermissionScopes) {
+                        $global:TestBrokerScopes = @($body.api.oauth2PermissionScopes)
+                    }
+                }
                 $global:TestApimWrites.Add([pscustomobject]@{
                     Method = $method
                     Url = $url
-                    Body = Get-Content -LiteralPath $bodyPath -Raw | ConvertFrom-Json
+                    Body = $body
+                    ResponsePath = $responsePath
                 })
+                if ($url -eq 'https://graph.microsoft.com/v1.0/applications' -and $method -eq 'POST') {
+                    $global:TestBrokerExists = $true
+                    return '{"id":"broker-object","appId":"broker-client","api":{"oauth2PermissionScopes":[]}}'
+                }
                 return '{}'
             }
             if ($url.StartsWith('https://graph.microsoft.com/v1.0/servicePrincipals?')) {
@@ -63,7 +93,11 @@ function global:az {
                 else { '{"value":[{"id":"broker-service-principal"}]}' }
             }
             elseif ($url.StartsWith('https://graph.microsoft.com/v1.0/applications?')) {
-                '{"value":[{"id":"broker-object","appId":"broker-client","api":{"oauth2PermissionScopes":[{"id":"broker-scope","value":"user_impersonation"}]}}]}'
+                $apps = if ($global:TestBrokerExists) {
+                    @(@{ id = 'broker-object'; appId = 'broker-client'; api = @{ oauth2PermissionScopes = @($global:TestBrokerScopes) } })
+                }
+                else { @() }
+                @{ value = @($apps) } | ConvertTo-Json -Depth 8 -Compress
             }
             elseif ($url -like 'https://management.azure.com/*/namedValues/broker-client-secret?api-version=*') {
                 '{}'
@@ -104,6 +138,22 @@ try {
     foreach ($write in $armWrites) {
         Assert-Equal $write.Url.StartsWith("https://management.azure.com$apimId/namedValues/") $true 'Explicit gateway must override old settings, including across resource groups and subscriptions'
     }
+    $scopeId = $global:TestBrokerScopes[0].id
+    Assert-Equal ([bool]$scopeId) $true 'A partially created broker must gain a scope before pre-authorization'
+    $appWrites = @($global:TestApimWrites | Where-Object { $_.Url -eq 'https://graph.microsoft.com/v1.0/applications/broker-object' })
+    Assert-Equal $appWrites.Count 2 'Scope creation and pre-authorization must use separate updates'
+    Assert-Equal $appWrites[1].Body.api.preAuthorizedApplications[0].delegatedPermissionIds[0] $scopeId 'Azure CLI must be authorized for the saved scope'
+
+    $global:TestApimWrites.Clear()
+    & $brokerScript @scriptArguments -ApimResourceId $apimId | Out-Null
+    Assert-Equal $global:TestBrokerScopes[0].id $scopeId 'Re-running setup must preserve the existing scope ID'
+
+    $global:TestApimWrites.Clear()
+    $global:TestBrokerExists = $false
+    $global:TestBrokerScopes = @()
+    & $brokerScript @scriptArguments -ApimResourceId $apimId | Out-Null
+    Assert-Equal $global:TestBrokerExists $true 'Setup must create a missing app'
+    Assert-Equal $global:TestBrokerScopes.Count 1 'A new app must save its scope before pre-authorization'
 
     $global:TestApimWrites.Clear()
     "APIM_RESOURCE_ID=`"$apimId`"" | Set-Content -LiteralPath $secrets.FullName
@@ -115,6 +165,8 @@ try {
     $api = $global:TestApimWrites | Where-Object { $_.Body.properties.serviceUrl }
     Assert-Equal $api.Body.properties.serviceUrl 'https://workshop.search.windows.net' 'Existing gateway must use the workshop Search backend'
     Assert-Equal $output.Contains('APIM_GATEWAY_URL=https://gateway.example.test') $true 'Gateway URL must come from APIM metadata'
+    $policy = $global:TestApimWrites | Where-Object { $_.ResponsePath }
+    Assert-Equal (Test-Path -LiteralPath $policy.ResponsePath) $false 'The unused policy response file must be deleted'
 
     $global:TestApimWrites.Clear()
     & $brokerScript @scriptArguments | Out-Null
