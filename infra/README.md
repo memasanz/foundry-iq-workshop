@@ -217,7 +217,7 @@ A successful deployment does not finish these manual steps:
   grant, and notebook 08's Microsoft 365 Copilot licensing or explicitly
   enabled Retrieval API pay-as-you-go. Deployment does not perform those steps.
 
-Use the [repository README](../README.md#3-open-the-notebooks) to install the
+Use the [repository README](../README.md#7-open-the-notebooks) to install the
 notebook environment and continue with the labs.
 
 ## Existing APIM for notebook 10
@@ -231,7 +231,7 @@ APIM_RESOURCE_ID=/subscriptions/<subscription-id>/resourceGroups/<gateway-group>
 The gateway can remain in another region or resource group, and even another
 subscription in the same tenant. Enable its system-assigned managed identity
 and grant that identity **Search Index Data Reader** on the workshop Search
-service. Then follow the [facilitator APIM setup](../README.md#6-set-up-the-apim-gateway-facilitator-before-the-workshop-notebook-10).
+service. Then follow the [facilitator APIM setup](../README.md#4-set-up-the-apim-gateway-facilitator-before-the-workshop-notebook-10).
 The scripts configure the workshop API and named values on the existing
 gateway; they do not provision an APIM service. Add the printed gateway URL
 and broker client ID to `.env` for notebook 10.

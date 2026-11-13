@@ -8,13 +8,23 @@ You can take one track or work through the whole workshop. The notebooks show th
 
 | Your role | Where to begin |
 |---|---|
-| **Participant** | Ask your facilitator for the workshop configuration and access, then [open the notebooks](#3-open-the-notebooks). You do not need to deploy your own Azure resources. |
+| **Participant** | Ask your facilitator for the workshop configuration and access, then [open the notebooks](#7-open-the-notebooks). You do not need to deploy your own Azure resources. |
 | **Facilitator** | Review [Prepare for the workshop](PREPARE-FOR-WORKSHOP.md), then follow the [beginner deployment guide](infra/README.md). Arrange approvals and licenses before class. |
 | **Learning on your own** | Follow the facilitator setup once, then use the participant instructions. You need your own eligible Azure subscription and access to the services you choose. |
 
 **New to Azure?** The [infrastructure guide](infra/README.md) explains the tools, subscription, resource group, deployment command and costs from the beginning.
 
-Jump to: [Lab guide](#choose-your-labs) | [Deployment](#1-deploy) | [Local setup](#3-open-the-notebooks) | [Troubleshooting](#troubleshooting) | [Cleanup](#cleanup)
+**Facilitator setup order** (complete the steps needed for your chosen labs):
+
+1. [Deploy](#1-deploy).
+2. [Set up the SharePoint app registration and administrator approval](#2-set-up-the-sharepoint-app-registration-facilitator-before-the-workshop).
+3. [Complete Web IQ onboarding](#3-complete-web-iq-onboarding).
+4. [Set up the APIM gateway](#4-set-up-the-apim-gateway-facilitator-before-the-workshop-notebook-10).
+5. [Set up the toolbox connection](#5-set-up-the-toolbox-connection-facilitator-before-the-workshop-notebook-12).
+6. [Grant attendee access](#6-grant-attendee-access).
+7. [Open the notebooks](#7-open-the-notebooks).
+
+Jump to: [Lab guide](#choose-your-labs) | [Deployment](#1-deploy) | [Local setup](#7-open-the-notebooks) | [Troubleshooting](#troubleshooting) | [Cleanup](#cleanup)
 
 ## Choose your labs
 
@@ -110,7 +120,7 @@ Facilitators additionally need:
 
 ## 1. Deploy
 
-**Facilitator only.** Participants using shared workshop resources can skip to [local setup](#3-open-the-notebooks). For a step-by-step explanation, see [Deploy the workshop resources](infra/README.md).
+**Facilitator only.** Participants using shared workshop resources can skip to [local setup](#7-open-the-notebooks). For a step-by-step explanation, see [Deploy the workshop resources](infra/README.md).
 
 From the workshop directory:
 
@@ -135,6 +145,12 @@ The script targets the subscription you specify without changing your CLI defaul
 
 All three are excluded from Git. A failed deployment leaves the previous `.env.azure` unchanged, although some Azure resources may already exist. **Do not copy generated endpoints into `.env`**: its values load first and can hide the new settings. Restart notebook kernels after redeployment.
 
+Before the remaining facilitator setup steps, create your local settings file without replacing an existing one:
+
+```powershell
+if (-not (Test-Path .\.env)) { Copy-Item .\.env.example .\.env }
+```
+
 The deployment grants the facilitator project-level Foundry User, Search administration/data access, and Blob data access. It also grants the required Search-to-Blob, Search-to-Foundry and project-to-Search access. It does **not** create notebook connections, indexes, agents, tenant app registrations or the participant parent-resource Foundry Owner grant.
 
 **Changing region creates new regional resources; it does not move or delete the old ones.** Old resources can keep billing. A group's metadata location can differ from its resources' location. Recreate region-dependent connections/agents and update SharePoint federation and the existing APIM backend/access grants afterward. Web IQ stays global and APIM can stay in its current region.
@@ -143,96 +159,7 @@ If policy disables Storage public networking, obtain the approved exception for 
 
 Use a **dedicated** resource group: whole-group cleanup deletes everything inside it.
 
-## 2. Complete Web IQ onboarding
-
-1. Open [Profile Management](https://webiq.microsoft.ai/profiles), sign in, and link the `WEBIQ_RESOURCE_ID` from `.env.azure`.
-2. Create an API key. This portal step is **not automated by the Azure resource deployment**.
-3. Set `WEBIQ_API_KEY` in your untracked `.env`, or use the notebooks' hidden password prompt. Local setup below creates `.env` without overwriting an existing file. Never put credentials directly in a notebook cell.
-4. Confirm your profile's allowed service list. Notebook 01 runs Web Search, Browse, News, Images, Videos and Auto by default. Auto beta requires service-side AppID enablement; request access before the workshop. Full-document formats and Places beta may also require additional access. Places remains optional (`WEBIQ_ENABLE_PLACES=true`). To skip a core exercise deliberately, set its `WEBIQ_ENABLE_*` flag to `false`; remove old `false` settings from an existing `.env` to restore the defaults, then restart the kernel. These flags only control which exercises run; they do not grant access or require additional Azure resources. API permission errors remain visible.
-
-Web IQ API keys are not Azure Cognitive Services keys and are not retrieved with `az cognitiveservices account keys list`. Production Web IQ Entra authentication uses an **app-only** token and a client ID bound to the Web IQ profile; `az login` alone does not authenticate a Web IQ REST call. The notebooks use a Web IQ API key and Entra credentials for Foundry.
-
-## 3. Open the notebooks
-
-**Participants start here once access is ready.** Open a terminal in the repository root (the folder containing `requirements.txt`). Get the shared `.env.azure` from your facilitator, or generate it by completing deployment yourself.
-
-Create your local settings file without replacing an existing one, and sign in to the workshop tenant:
-
-```powershell
-if (-not (Test-Path .\.env)) { Copy-Item .\.env.example .\.env }
-$settings = Get-Content .\.env.azure -Raw | ConvertFrom-StringData
-az login --tenant $settings.AZURE_TENANT_ID
-```
-
-Set up the Python environment once. If `.venv` already exists, reuse it and skip the first command:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m ipykernel install --user --name iq-workshop --display-name 'Azure IQ Workshop'
-# Skip this command if using VS Code's notebook editor.
-.\.venv\Scripts\python.exe -m jupyter lab
-```
-
-On Microsoft-managed devices that block public PyPI, add `--index-url https://packagefeedproxy.microsoft.io/pypi/simple` to the pip command.
-
-Choose **Azure IQ Workshop** in the notebook's kernel picker. In VS Code, open the `.ipynb` file and select the kernel at the top right; you do not need to start JupyterLab if using VS Code. For the Web IQ track, open notebook 01 and run its cells from top to bottom, then continue with 02 and 03.
-
-All labs use the same local environment. Edit `.env` only for the labs you plan to run:
-
-| Setting | When you need it |
-|---|---|
-| `WEBIQ_API_KEY` | Web IQ calls/connections; notebook 09 also needs it for retrieval. Use your workshop-only key. |
-| `WORKSHOP_PREFIX` | Search labs: a unique value such as `alice01` (3-20 lowercase letters/digits, starting with a letter). |
-| `SHAREPOINT_SITE_URL` | SharePoint labs and notebook 09; use the approved test site. |
-| Three `SHAREPOINT_*` app/identity IDs | Indexed SharePoint only; supplied after facilitator setup. Notebook 08 does not need them. |
-| `APIM_RESOURCE_ID` | Facilitator setup for notebook 10's existing gateway. Participants receive the printed `APIM_GATEWAY_URL`, `BROKER_APP_CLIENT_ID` and `WEBIQ_APIM_SOURCE_NAME`. |
-
-Notebook 02 stores the workshop Web IQ key in a Foundry connection; sufficiently privileged project members can access it. Notebook 03 reuses that connection. Use a workshop-only key and rotate/revoke it afterward. Do not remove the shared connection while other labs still need it.
-
-**You are ready when** you can select the kernel, sign in to the correct tenant and run the first configuration cell of your chosen notebook without missing-setting errors. Later service calls also require the permissions and approvals in the preparation checklist.
-
-## 4. Grant attendee access
-
-After deployment, run the permissions script as an administrator with role-assignment write permissions on the workshop resources, such as Owner or Role Based Access Control Administrator. Azure subscription Contributor alone cannot grant roles. The script also needs directory access to resolve the specified Microsoft Entra users.
-
-```powershell
-# Preview first; this reads identities and assignments but does not grant access.
-.\scripts\grant-workshop-access.ps1 `
-  -Users 'attendee1@contoso.com', 'attendee2@contoso.com' `
-  -WhatIf
-
-# Assign the workshop roles.
-.\scripts\grant-workshop-access.ps1 `
-  -Users 'attendee1@contoso.com', 'attendee2@contoso.com'
-
-# A text file can supply one user principal name or user object ID per line.
-.\scripts\grant-workshop-access.ps1 -Users (Get-Content '.\attendees.txt')
-```
-
-Example output showing newly assigned roles and existing assignments (user details redacted):
-
-![Workshop permission assignments showing each user's role and Assigned or Already assigned status](docs/grant-workshop-access.png)
-
-`-Users` accepts Microsoft Entra user principal names or user object IDs in the deployment tenant, not arbitrary contact email addresses. Invite external attendees as guests first, then use their **guest object IDs in the workshop tenant**. The script does not create users or send guest invitations. Do not commit attendee rosters to source control.
-
-The script reads resource IDs from `.env.azure`, validates that the scopes belong to its workshop resource group, resolves all attendees before making changes, and skips identical existing direct assignments. It targets the configured subscription without changing your CLI default. Use `-EnvironmentFile` to select another deployment's generated settings.
-
-| Role | Scope | Enables |
-|---|---|---|
-| Search Service Contributor | Workshop Search service | Create/manage indexes, indexers, data sources, skillsets and other Search objects |
-| Search Index Data Contributor | Workshop Search service | Upload, update and delete documents; run queries |
-| Storage Blob Data Contributor | `workshop-documents` container only | Upload, read and delete source documents |
-| Foundry User | Workshop Foundry project | Create and use agents in that project |
-| Reader | Web IQ resource (only if `WEBIQ_RESOURCE_ID` is in `.env.azure`) | View the resource in the portal; read-only |
-
-**Additional grants are still required:** notebooks 02-03 use **Foundry Owner on the parent Foundry resource** for each participant. Notebook 06 needs account-level Cognitive Services OpenAI User or the workshop's Foundry Owner role; project-only Foundry User is not enough. This script does not add those parent-resource roles.
-
-These roles do not grant subscription/resource-group Contributor, Owner, role-assignment management, SharePoint access or write access to Web IQ. Web IQ API access uses a separate profile key.
-
-**Shared-service warning:** participants can modify one another's Search objects and access shared index/blob content. A unique prefix prevents name collisions, **not access isolation**. Use trusted attendees and non-sensitive data; separate services/containers if strict isolation is required. Check Search object limits and capacity for the class size, and allow several minutes for role propagation.
-
-## 5. Set up the SharePoint app registration (facilitator, before the workshop)
+## 2. Set up the SharePoint app registration (facilitator, before the workshop)
 
 Notebook 07's **indexed** path needs an Entra app that Azure AI Search uses to read SharePoint. Run `scripts\setup-sharepoint-app.ps1` once, after deployment, as a user who can create app registrations or update the selected existing app (add `-GrantAdminConsent` only if you also hold a role that can consent). Attendees do not need Entra permissions. The **remote** path needs no app; it runs as each attendee (see notebook 08).
 
@@ -257,6 +184,8 @@ Use `-AppName` for the app registration's **exact display name** in the deployme
 
 The original `setup-sharepoint-app.ps1` **still supports combined setup, consent and site grants**. For a separate administrator handoff, use the additional [`scripts\approve-sharepoint-app.ps1`](scripts/approve-sharepoint-app.ps1) entry point:
 
+**Who should run the approval script?** For the simplest handoff, ask a **Global Administrator** to run it once. A Privileged Role Administrator with authority to manage the app's credentials can also run it. Participants do not need these roles afterward.
+
 1. **Facilitator/app owner:** configure the app and Search federation without requesting site access or granting admin consent. This requires app-management permission and Search read access, but not the site-grant administrator role:
 
    ```powershell
@@ -265,7 +194,7 @@ The original `setup-sharepoint-app.ps1` **still supports combined setup, consent
 
    Keep the three printed settings for your local `.env`, and give the administrator the **tenant ID**, the printed **application client ID**, and the **site URL**. Site access and runtime consent remain outstanding at this point.
 
-2. **Authorized Global Administrator or Privileged Role Administrator:** from the repository root, sign in to that tenant and preview the approval:
+2. **Authorized administrator:** from the repository root, sign in to that tenant and preview the approval:
 
    ```powershell
    az login --tenant '<tenant-id>' --allow-no-subscriptions
@@ -281,11 +210,21 @@ The original `setup-sharepoint-app.ps1` **still supports combined setup, consent
 
 The administrator needs Azure CLI and Graph authorization to read the app and manage application credentials and app-role assignments. Their administrator role does not automatically supply missing Graph token permissions. They do **not** need Search access, an Azure subscription role, your `.env` or `.env.azure`, or a delegated `Sites.FullControl.All` token. If handing off individual files rather than the repository, send **both** `approve-sharepoint-app.ps1` and its sibling `setup-sharepoint-app.ps1` in the same folder.
 
-| What the approval script does | Lasting result |
-|---|---|
-| Requires an existing app in the specified tenant with all four workshop application permissions already requested | No app creation, manifest changes, or federation changes |
-| Grants/verifies Graph `Files.Read.All` and `Sites.Selected`, plus SharePoint `Sites.Selected` and `User.Read.All` | Runtime application admin consent; **Graph `Files.Read.All` is tenant-wide file read**, not site-only access |
-| Temporarily grants application Graph `Sites.FullControl.All` and creates a 15-minute credential; uses an app-only token to grant/verify site Read | Site Read remains; cleanup of the newly added FullControl assignment and credential is attempted and verified |
+**What the approval script does, in order:**
+
+1. Finds the existing app by client ID in the specified tenant and checks that all four workshop application permissions have already been requested.
+2. Approves and verifies the runtime **application** permissions: Microsoft Graph `Files.Read.All` and `Sites.Selected`; SharePoint `Sites.Selected` and `User.Read.All`.
+3. Temporarily grants Microsoft Graph **application `Sites.FullControl.All`** and creates a **15-minute credential**.
+4. Uses an **app-only token**, not delegated SharePoint authorization, to grant and verify **Read on the specified site**, or reuse an existing readable grant.
+5. Removes the temporary permission and credential it added, then verifies their cleanup.
+
+**What remains afterward:** the four runtime application consent grants and the site's Read grant. The script does **not** create an app, change its manifest or Search federation, or edit `.env` or `.env.azure`. **Graph `Files.Read.All` is tenant-wide file read**, so the app's total access is not limited solely to the selected site.
+
+Example successful approval:
+
+![Administrator approval output confirming runtime application consent, existing site Read access, and verified temporary bootstrap cleanup](docs/approve-sharepoint-app.png)
+
+The screenshot's "Site read access already granted" message means the app already had a readable site grant; no duplicate was created. Together with the runtime-consent and cleanup confirmations, it shows that administrator approval succeeded. Use your own tenant, app client ID and site URL, and ensure the notebook configuration points to the **same app** that was approved.
 
 It does not approve unrelated requested permissions or delegated scopes. Existing runtime consents and readable site grants are reused. Existing broader permissions/credentials are preserved, with warnings for broader site grants or pre-existing Graph FullControl. Cleanup runs on success or failure; any cleanup failure reports manual-action instructions. Do not forcibly terminate or concurrently modify this app during bootstrap. Issued tokens can remain valid until expiry after revocation.
 
@@ -402,7 +341,16 @@ Before class, use two non-admin member users to test an allowed and a restricted
 
 **Using notebook 08 instead?** Skip this ingestion app setup. Queries run as each signed-in user and require their Microsoft 365 Copilot license or explicitly enabled Retrieval API pay-as-you-go. This billing is separate from Search/Foundry. Verify the documents are available in Microsoft 365 search before class.
 
-## 6. Set up the APIM gateway (facilitator, before the workshop; notebook 10)
+## 3. Complete Web IQ onboarding
+
+1. Open [Profile Management](https://webiq.microsoft.ai/profiles), sign in, and link the `WEBIQ_RESOURCE_ID` from `.env.azure`.
+2. Create an API key. This portal step is **not automated by the Azure resource deployment**.
+3. Set `WEBIQ_API_KEY` in your untracked `.env`, or use the notebooks' hidden password prompt. Local setup below creates `.env` without overwriting an existing file. Never put credentials directly in a notebook cell.
+4. Confirm your profile's allowed service list. Notebook 01 runs Web Search, Browse, News, Images, Videos and Auto by default. Auto beta requires service-side AppID enablement; request access before the workshop. Full-document formats and Places beta may also require additional access. Places remains optional (`WEBIQ_ENABLE_PLACES=true`). To skip a core exercise deliberately, set its `WEBIQ_ENABLE_*` flag to `false`; remove old `false` settings from an existing `.env` to restore the defaults, then restart the kernel. These flags only control which exercises run; they do not grant access or require additional Azure resources. API permission errors remain visible.
+
+Web IQ API keys are not Azure Cognitive Services keys and are not retrieved with `az cognitiveservices account keys list`. Production Web IQ Entra authentication uses an **app-only** token and a client ID bound to the Web IQ profile; `az login` alone does not authenticate a Web IQ REST call. The notebooks use a Web IQ API key and Entra credentials for Foundry.
+
+## 4. Set up the APIM gateway (facilitator, before the workshop; notebook 10)
 
 Notebook 10 calls the knowledge base through an **existing Azure API Management service**, using a **different app registration** from the SharePoint one. Bicep does not create or configure the gateway. It can be in another resource group or subscription in the same tenant and does not have to move to East US. Keep it outside the dedicated workshop resource group if you intend to run the whole-group cleanup and retain the gateway. Before running the scripts, enable its **system-assigned managed identity** and grant that identity **Search Index Data Reader** on the workshop Search service. The facilitator needs permission to configure APIM, create the broker app, and grant this Search role.
 
@@ -448,7 +396,7 @@ The setup scripts target only this gateway's workshop API and named values, not 
 
 APIM charges depend on the existing gateway's tier. Because header names embed the source name, the policy is written for **one shared Web IQ source** (`-WebIqSourceName`, default `iq-workshop-webiq`); notebook 10 creates it. Give attendees `BROKER_APP_CLIENT_ID`, `APIM_GATEWAY_URL` and `WEBIQ_APIM_SOURCE_NAME` (printed by the scripts). The APIM named-value secrets are visible to anyone with APIM contributor access; use Key Vault references for production.
 
-## 7. Set up the toolbox connection (facilitator, before the workshop; notebook 12)
+## 5. Set up the toolbox connection (facilitator, before the workshop; notebook 12)
 
 Create the shared toolbox connection once as the facilitator:
 
@@ -467,6 +415,86 @@ This creates the shared connection `iq-workshop-search-mcp` (`remote-tool`, `age
 ```
 
 To skip this per attendee, you could instead give attendees a constrained *Role Based Access Control Administrator* role (limited to Search Index Data Reader) on the Search service; this workshop does not do that by default. Attendees need `TOOLBOX_CONNECTION_NAME` in `.env` only if you change the default name.
+
+## 6. Grant attendee access
+
+After deployment, run the permissions script as an administrator with role-assignment write permissions on the workshop resources, such as Owner or Role Based Access Control Administrator. Azure subscription Contributor alone cannot grant roles. The script also needs directory access to resolve the specified Microsoft Entra users.
+
+```powershell
+# Preview first; this reads identities and assignments but does not grant access.
+.\scripts\grant-workshop-access.ps1 `
+  -Users 'attendee1@contoso.com', 'attendee2@contoso.com' `
+  -WhatIf
+
+# Assign the workshop roles.
+.\scripts\grant-workshop-access.ps1 `
+  -Users 'attendee1@contoso.com', 'attendee2@contoso.com'
+
+# A text file can supply one user principal name or user object ID per line.
+.\scripts\grant-workshop-access.ps1 -Users (Get-Content '.\attendees.txt')
+```
+
+Example output showing newly assigned roles and existing assignments (user details redacted):
+
+![Workshop permission assignments showing each user's role and Assigned or Already assigned status](docs/grant-workshop-access.png)
+
+`-Users` accepts Microsoft Entra user principal names or user object IDs in the deployment tenant, not arbitrary contact email addresses. Invite external attendees as guests first, then use their **guest object IDs in the workshop tenant**. The script does not create users or send guest invitations. Do not commit attendee rosters to source control.
+
+The script reads resource IDs from `.env.azure`, validates that the scopes belong to its workshop resource group, resolves all attendees before making changes, and skips identical existing direct assignments. It targets the configured subscription without changing your CLI default. Use `-EnvironmentFile` to select another deployment's generated settings.
+
+| Role | Scope | Enables |
+|---|---|---|
+| Search Service Contributor | Workshop Search service | Create/manage indexes, indexers, data sources, skillsets and other Search objects |
+| Search Index Data Contributor | Workshop Search service | Upload, update and delete documents; run queries |
+| Storage Blob Data Contributor | `workshop-documents` container only | Upload, read and delete source documents |
+| Foundry User | Workshop Foundry project | Create and use agents in that project |
+| Reader | Web IQ resource (only if `WEBIQ_RESOURCE_ID` is in `.env.azure`) | View the resource in the portal; read-only |
+
+**Additional grants are still required:** notebooks 02-03 use **Foundry Owner on the parent Foundry resource** for each participant. Notebook 06 needs account-level Cognitive Services OpenAI User or the workshop's Foundry Owner role; project-only Foundry User is not enough. This script does not add those parent-resource roles.
+
+These roles do not grant subscription/resource-group Contributor, Owner, role-assignment management, SharePoint access or write access to Web IQ. Web IQ API access uses a separate profile key.
+
+**Shared-service warning:** participants can modify one another's Search objects and access shared index/blob content. A unique prefix prevents name collisions, **not access isolation**. Use trusted attendees and non-sensitive data; separate services/containers if strict isolation is required. Check Search object limits and capacity for the class size, and allow several minutes for role propagation.
+
+## 7. Open the notebooks
+
+**Participants start here once access is ready.** Open a terminal in the repository root (the folder containing `requirements.txt`). Get the shared `.env.azure` from your facilitator, or generate it by completing deployment yourself.
+
+Create your local settings file without replacing an existing one, and sign in to the workshop tenant:
+
+```powershell
+if (-not (Test-Path .\.env)) { Copy-Item .\.env.example .\.env }
+$settings = Get-Content .\.env.azure -Raw | ConvertFrom-StringData
+az login --tenant $settings.AZURE_TENANT_ID
+```
+
+Set up the Python environment once. If `.venv` already exists, reuse it and skip the first command:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m ipykernel install --user --name iq-workshop --display-name 'Azure IQ Workshop'
+# Skip this command if using VS Code's notebook editor.
+.\.venv\Scripts\python.exe -m jupyter lab
+```
+
+On Microsoft-managed devices that block public PyPI, add `--index-url https://packagefeedproxy.microsoft.io/pypi/simple` to the pip command.
+
+Choose **Azure IQ Workshop** in the notebook's kernel picker. In VS Code, open the `.ipynb` file and select the kernel at the top right; you do not need to start JupyterLab if using VS Code. For the Web IQ track, open notebook 01 and run its cells from top to bottom, then continue with 02 and 03.
+
+All labs use the same local environment. Edit `.env` only for the labs you plan to run:
+
+| Setting | When you need it |
+|---|---|
+| `WEBIQ_API_KEY` | Web IQ calls/connections; notebook 09 also needs it for retrieval. Use your workshop-only key. |
+| `WORKSHOP_PREFIX` | Search labs: a unique value such as `alice01` (3-20 lowercase letters/digits, starting with a letter). |
+| `SHAREPOINT_SITE_URL` | SharePoint labs and notebook 09; use the approved test site. |
+| Three `SHAREPOINT_*` app/identity IDs | Indexed SharePoint only; supplied after facilitator setup. Notebook 08 does not need them. |
+| `APIM_RESOURCE_ID` | Facilitator setup for notebook 10's existing gateway. Participants receive the printed `APIM_GATEWAY_URL`, `BROKER_APP_CLIENT_ID` and `WEBIQ_APIM_SOURCE_NAME`. |
+
+Notebook 02 stores the workshop Web IQ key in a Foundry connection; sufficiently privileged project members can access it. Notebook 03 reuses that connection. Use a workshop-only key and rotate/revoke it afterward. Do not remove the shared connection while other labs still need it.
+
+**You are ready when** you can select the kernel, sign in to the correct tenant and run the first configuration cell of your chosen notebook without missing-setting errors. Later service calls also require the permissions and approvals in the preparation checklist.
 
 ## Costs and responsible use
 
