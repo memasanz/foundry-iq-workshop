@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import requests
+
 from test_notebooks import ROOT, code_cell, http_response
 
 APIM = "10-foundry-iq-apim.ipynb"
@@ -160,6 +162,30 @@ class ApimNotebookTests(unittest.TestCase):
             headers = call.kwargs["headers"]
             self.assertEqual(list(headers), ["Authorization"])
             self.assertEqual(headers["Authorization"], f"Bearer {self.ns['broker_token']()}")
+
+    def test_retrieval_errors_print_details_before_raising(self):
+        for status, reason in ((401, "On-behalf-of exchange failed"), (403, "Forbidden")):
+            for cell_id in ("ask-internal", "ask-web", "ask-mixed"):
+                with self.subTest(status=status, cell=cell_id):
+                    response = http_response(status, {})
+                    response.reason = reason
+                    response.text = "diagnostic detail " + "x" * 8000
+                    self.http.post.return_value = response
+                    with patch("builtins.print") as output:
+                        with self.assertRaises(requests.HTTPError):
+                            exec(code_cell(APIM, cell_id), self.ns)
+                        self.assertEqual(output.call_args_list, [
+                            unittest.mock.call("HTTP:", status, reason),
+                            unittest.mock.call(response.text[:8000]),
+                        ])
+                    response.json.assert_not_called()
+
+    def test_successful_retrieval_does_not_print_http_diagnostics(self):
+        for cell_id in ("ask-internal", "ask-web", "ask-mixed"):
+            with self.subTest(cell=cell_id), patch("builtins.print") as output:
+                exec(code_cell(APIM, cell_id), self.ns)
+                self.assertFalse(any(call.args and call.args[0] == "HTTP:"
+                                     for call in output.call_args_list))
 
     def test_rejected_calls_pass_only_when_both_401(self):
         self.http.post.return_value = http_response(401, {})
