@@ -1,5 +1,6 @@
 import ast
 import json
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,6 +45,15 @@ def http_response(status, data, headers=None):
 
 
 class NotebookStructureTests(unittest.TestCase):
+    def test_each_notebook_starts_with_permissions_and_attendee_alias_guidance(self):
+        for path in sorted((ROOT / "notebooks").glob("*.ipynb")):
+            with self.subTest(notebook=path.name):
+                introduction = nbformat.read(path, as_version=4).cells[0]
+                self.assertEqual(introduction.cell_type, "markdown")
+                self.assertIn("## Required permissions", introduction.source)
+                self.assertIn("WORKSHOP_PREFIX", introduction.source)
+                self.assertIn("not enforce access isolation", introduction.source)
+
     def test_notebook_schema_syntax_and_clean_outputs(self):
         paths = list((ROOT / "notebooks").glob("*.ipynb"))
         required = {
@@ -69,6 +79,122 @@ class NotebookStructureTests(unittest.TestCase):
                             cell.source, f"{path.name}:{cell.id}", "exec",
                             flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT,
                         )
+
+
+class AttendeeAliasTests(unittest.TestCase):
+    def configure(self, number, alias, **overrides):
+        settings = {
+            "AZURE_TENANT_ID": "11111111-1111-1111-1111-111111111111",
+            "AZURE_SEARCH_ENDPOINT": "https://workshop.search.windows.net",
+            "AZURE_SEARCH_RESOURCE_ID": "/subscriptions/test/providers/Microsoft.Search/searchServices/workshop",
+            "AZURE_STORAGE_RESOURCE_ID": "/subscriptions/test/providers/Microsoft.Storage/storageAccounts/workshop",
+            "AZURE_STORAGE_BLOB_ENDPOINT": "https://workshop.blob.core.windows.net",
+            "AZURE_STORAGE_CONTAINER_NAME": "samples",
+            "AZURE_AI_ACCOUNT_NAME": "workshop",
+            "AZURE_AI_PROJECT_ENDPOINT": "https://workshop.services.ai.azure.com/api/projects/workshop",
+            "AZURE_AI_PROJECT_RESOURCE_ID": "/subscriptions/test/providers/Microsoft.CognitiveServices/accounts/workshop/projects/workshop",
+            "AZURE_AI_MODEL_DEPLOYMENT_NAME": "workshop-chat",
+            "AZURE_AI_EMBEDDING_DEPLOYMENT_NAME": "workshop-embedding",
+            "SHAREPOINT_SITE_URL": "https://contoso.sharepoint.com/sites/workshop",
+            "BROKER_APP_CLIENT_ID": "22222222-2222-2222-2222-222222222222",
+            "APIM_GATEWAY_URL": "https://workshop.azure-api.net",
+            "WEBIQ_API_KEY": "synthetic-test-key",
+            "WORKSHOP_PREFIX": alias,
+            **overrides,
+        }
+        notebook = next((ROOT / "notebooks").glob(f"{number:02}-*.ipynb")).name
+        cell_id = "setup" if number in (2, 3, 5) else "configuration"
+        namespace = {}
+        with (
+            patch.dict(os.environ, settings, clear=True),
+            patch("dotenv.load_dotenv"),
+            patch("pathlib.Path.cwd", return_value=ROOT),
+            patch("azure.identity.AzureCliCredential"),
+            patch("azure.identity.get_bearer_token_provider"),
+            patch("azure.ai.projects.AIProjectClient"),
+            patch("builtins.print"),
+            patch("builtins.input", side_effect=AssertionError("Configured aliases must not prompt")),
+        ):
+            exec(code_cell(notebook, cell_id), namespace)
+        return namespace
+
+    def test_two_attendees_have_disjoint_created_names_and_local_folders(self):
+        objects = {
+            2: ("connection_name",),
+            3: ("toolbox_name", "toolbox_connection_name", "agent_name"),
+            4: ("index_name", "data_source_name", "skillset_name", "indexer_name", "blob_prefix"),
+            5: ("index_name", "data_source_name", "skillset_name", "indexer_name", "blob_prefix"),
+            6: ("index_name",),
+            7: ("index_name", "data_source_name", "skillset_name", "indexer_name"),
+            8: ("remote_source_name", "remote_base_name"),
+            9: ("blob_folder", "blob_source_name", "sharepoint_source_name", "webiq_source_name", "knowledge_base_name"),
+            10: ("knowledge_base_name",),
+            11: ("agent_name", "agent_folder"),
+            12: ("knowledge_base_name", "toolbox_name", "agent_name", "agent_folder"),
+        }
+        for number, keys in objects.items():
+            with self.subTest(notebook=number):
+                names = []
+                for alias in ("alice01", "bob02"):
+                    namespace = self.configure(number, alias)
+                    values = {namespace[key] for key in keys}
+                    for value in values:
+                        name = value.name if isinstance(value, Path) else value
+                        self.assertTrue(name.startswith((f"{alias}-", f"{alias}/")), name)
+                    names.append(values)
+                self.assertTrue(names[0].isdisjoint(names[1]))
+
+    def test_cross_notebook_references_follow_the_same_alias(self):
+        for alias in ("alice01", "bob02"):
+            with self.subTest(alias=alias):
+                webiq = self.configure(2, alias)
+                toolbox = self.configure(3, alias)
+                self.assertEqual(webiq["connection_name"], toolbox["webiq_connection_name"])
+                kb = self.configure(9, alias)
+                apim = self.configure(10, alias)
+                hosted = self.configure(12, alias)
+                self.assertEqual(kb["blob_source_name"], apim["blob_source_name"])
+                self.assertEqual(kb["sharepoint_source_name"], apim["sharepoint_source_name"])
+                self.assertEqual(kb["blob_source_name"], hosted["blob_source_name"])
+                self.assertEqual(apim["webiq_source_name"], "iq-workshop-webiq")
+                self.assertEqual(hosted["connection_name"], "iq-workshop-search-mcp")
+
+    def test_webiq_connection_override_cannot_overwrite_another_attendee(self):
+        for number in (2, 3):
+            for name in ("webiq-mcp", "bob02-webiq-mcp", "alice01x-webiq-mcp"):
+                with self.subTest(notebook=number, connection=name):
+                    with self.assertRaisesRegex(ValueError, "must start with your WORKSHOP_PREFIX"):
+                        self.configure(number, "alice01", WEBIQ_CONNECTION_NAME=name)
+            namespace = self.configure(number, "alice01", WEBIQ_CONNECTION_NAME="alice01-custom")
+            key = "connection_name" if number == 2 else "webiq_connection_name"
+            self.assertEqual(namespace[key], "alice01-custom")
+
+    def test_new_webiq_alias_validation_rejects_invalid_names(self):
+        for number in (2, 3):
+            for alias in ("ALICE", "a", "1alice", "alice/bob", "a" * 21):
+                with self.subTest(notebook=number, alias=alias):
+                    with self.assertRaisesRegex(ValueError, "3-20 lowercase"):
+                        self.configure(number, alias)
+
+    def test_prompt_agents_and_conversations_carry_the_attendee_alias(self):
+        for number in (2, 3):
+            for alias in ("alice01", "bob02"):
+                with self.subTest(notebook=number, alias=alias):
+                    namespace = self.configure(number, alias)
+                    namespace.update(
+                        toolbox_mcp_url="https://workshop.services.ai.azure.com/toolboxes/test/mcp",
+                        web_tool_name="webiq___web",
+                    )
+                    notebook = next((ROOT / "notebooks").glob(f"{number:02}-*.ipynb")).name
+                    with patch("builtins.print"), patch.dict(
+                        os.environ, {"AZURE_AI_MODEL_DEPLOYMENT_NAME": "workshop-chat"},
+                    ):
+                        exec(code_cell(notebook, "create-agent"), namespace)
+                    arguments = namespace["project"].agents.create_version.call_args.kwargs
+                    self.assertTrue(arguments["agent_name"].startswith(f"{alias}-"))
+                    namespace["openai"].conversations.create.assert_called_once_with(
+                        metadata={"attendee": alias},
+                    )
 
 
 class DirectApiCellTests(unittest.TestCase):

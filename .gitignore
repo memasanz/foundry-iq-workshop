@@ -6,5 +6,7 @@
 __pycache__/
 .ipynb_checkpoints/
 *.executed.ipynb
+*-hosted-agent/
+*-hosted-agent-iq/
 infra/*.json
 attendees.txt

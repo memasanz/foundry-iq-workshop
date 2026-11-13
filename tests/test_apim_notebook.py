@@ -59,12 +59,28 @@ class ApimNotebookTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             run("inspect-token", self.ns)
 
-    def test_webiq_source_stores_no_key(self):
+    def test_shared_webiq_source_is_read_without_modification(self):
+        self.http.get.return_value = http_response(200, {
+            "kind": "mcpServer",
+            "mcpServerParameters": {"serverURL": "https://api.microsoft.ai/v3/mcp"},
+        })
         run("create-webiq-source", self.ns)
-        body = self.http.put.call_args.kwargs["json"]
-        self.assertEqual(body["kind"], "mcpServer")
-        self.assertIsNone(body["mcpServerParameters"]["authentication"])
-        self.assertIn("/knowledgesources/iq-workshop-webiq", self.http.put.call_args.args[0])
+        self.assertIn("/knowledgesources/iq-workshop-webiq", self.http.get.call_args.args[0])
+        self.http.put.assert_not_called()
+        self.http.post.assert_not_called()
+        self.http.delete.assert_not_called()
+
+    def test_missing_or_incorrect_shared_source_requires_facilitator_setup(self):
+        for status, body in (
+            (404, {}),
+            (200, {"kind": "azureBlob"}),
+            (200, {"kind": "mcpServer", "mcpServerParameters": {"serverURL": "https://other.example/mcp"}}),
+        ):
+            with self.subTest(status=status, source=body):
+                self.http.get.return_value = http_response(status, body)
+                with self.assertRaisesRegex(RuntimeError, "facilitator"):
+                    run("create-webiq-source", self.ns)
+                self.http.put.assert_not_called()
 
     def test_knowledge_base_reuses_notebook_08_sources(self):
         def get(url, **kwargs):

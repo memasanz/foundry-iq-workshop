@@ -728,12 +728,14 @@ class SearchCellTests(unittest.TestCase):
             http_response(201, {"id": "service-principal-id"}),
         ]
         with patch.dict(os.environ, {}, clear=True):
+            self.ns["prefix"] = "alice01"
             run_cell(SP_INDEXED, "create-app-registration", self.ns, {
                 "CREATE_APP_REGISTRATION = False": "CREATE_APP_REGISTRATION = True",
             })
         calls = self.http.post.call_args_list
         self.assertEqual(len(calls), 2)
         app_body = calls[0].kwargs["json"]
+        self.assertEqual(app_body["displayName"], "alice01-sharepoint-indexer")
         self.assertEqual(app_body["signInAudience"], "AzureADMyOrg")
         self.assertEqual(app_body["requiredResourceAccess"], [
             {"resourceAppId": "00000003-0000-0000-c000-000000000000", "resourceAccess": [

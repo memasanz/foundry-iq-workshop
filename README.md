@@ -352,7 +352,7 @@ Web IQ API keys are not Azure Cognitive Services keys and are not retrieved with
 
 ## 4. Set up the APIM gateway (facilitator, before the workshop; notebook 10)
 
-Notebook 10 calls the knowledge base through an **existing Azure API Management service**, using a **different app registration** from the SharePoint one. Bicep does not create or configure the gateway. It can be in another resource group or subscription in the same tenant and does not have to move to East US. Keep it outside the dedicated workshop resource group if you intend to run the whole-group cleanup and retain the gateway. Before running the scripts, enable its **system-assigned managed identity** and grant that identity **Search Index Data Reader** on the workshop Search service. The facilitator needs permission to configure APIM, create the broker app, and grant this Search role.
+Notebook 10 calls the knowledge base through an **existing Azure API Management service**, using a **different app registration** from the SharePoint one. Bicep does not create or configure the gateway. It can be in another resource group or subscription in the same tenant and does not have to move to East US. Keep it outside the dedicated workshop resource group if you intend to run the whole-group cleanup and retain the gateway. Before running the scripts, enable its **system-assigned managed identity** and grant that identity **Search Index Data Reader** on the workshop Search service. The facilitator needs permission to configure APIM, create the broker app, grant this Search role, and **Search Service Contributor** on Search to create the shared Web IQ source.
 
 Set your existing gateway's resource ID in the untracked `.env` file. Both setup scripts read it; the gateway is not a Bicep deployment parameter:
 
@@ -394,7 +394,7 @@ The setup scripts target only this gateway's workshop API and named values, not 
 
 </details>
 
-APIM charges depend on the existing gateway's tier. Because header names embed the source name, the policy is written for **one shared Web IQ source** (`-WebIqSourceName`, default `iq-workshop-webiq`); notebook 10 creates it. Give attendees `BROKER_APP_CLIENT_ID`, `APIM_GATEWAY_URL` and `WEBIQ_APIM_SOURCE_NAME` (printed by the scripts). The APIM named-value secrets are visible to anyone with APIM contributor access; use Key Vault references for production.
+APIM charges depend on the existing gateway's tier. Because header names embed the source name, the policy is written for **one shared Web IQ source** (`-WebIqSourceName`, default `iq-workshop-webiq`). `setup-apim-policy.ps1` creates or updates it once during facilitator setup; notebook 10 only reads it, so attendees do not overwrite shared configuration. Existing workshops should rerun that script before notebook 10 if the source is missing. Give attendees `BROKER_APP_CLIENT_ID`, `APIM_GATEWAY_URL` and `WEBIQ_APIM_SOURCE_NAME` (printed by the scripts). The APIM named-value secrets are visible to anyone with APIM contributor access; use Key Vault references for production.
 
 ## 5. Set up the toolbox connection (facilitator, before the workshop; notebook 12)
 
@@ -487,12 +487,14 @@ All labs use the same local environment. Edit `.env` only for the labs you plan 
 | Setting | When you need it |
 |---|---|
 | `WEBIQ_API_KEY` | Web IQ calls/connections; notebook 09 also needs it for retrieval. Use your workshop-only key. |
-| `WORKSHOP_PREFIX` | Search labs: a unique value such as `alice01` (3-20 lowercase letters/digits, starting with a letter). |
+| `WORKSHOP_PREFIX` | Your attendee alias throughout the workshop, such as `alice01` (3-20 lowercase letters/digits, starting with a letter). Keep the same value between notebooks. |
 | `SHAREPOINT_SITE_URL` | SharePoint labs and notebook 09; use the approved test site. |
 | Three `SHAREPOINT_*` app/identity IDs | Indexed SharePoint only; supplied after facilitator setup. Notebook 08 does not need them. |
 | `APIM_RESOURCE_ID` | Facilitator setup for notebook 10's existing gateway. Participants receive the printed `APIM_GATEWAY_URL`, `BROKER_APP_CLIENT_ID` and `WEBIQ_APIM_SOURCE_NAME`. |
 
-Notebook 02 stores the workshop Web IQ key in a Foundry connection; sufficiently privileged project members can access it. Notebook 03 reuses that connection. Use a workshop-only key and rotate/revoke it afterward. Do not remove the shared connection while other labs still need it.
+Every notebook starts with its required participant permissions and facilitator/service-identity prerequisites. Use your alias for all attendee-created top-level objects: connections, agents, toolboxes, indexes, data sources, skillsets, indexers, knowledge sources/bases, Blob folders and generated-agent folders. Notebooks 01 and 13 only make requests and create no named resources. Fields/tool labels inside your objects and service-generated IDs stay unchanged. Shared Azure services, models, the ingestion app, notebook 10's Web IQ source and notebook 12's facilitator connection remain shared. **Aliases prevent naming collisions, not provide security isolation**; the workshop's Search roles can still access other attendees' objects.
+
+Notebook 02 stores the workshop Web IQ key in your `{prefix}-webiq-mcp` Foundry connection; sufficiently privileged project members can access it. Notebook 03 reuses your connection with the same alias. Remove an old `WEBIQ_CONNECTION_NAME=webiq-mcp` override, or replace it with an alias-prefixed name in both labs. Use a workshop-only key and rotate/revoke it afterward. Keep your connection until both labs are finished.
 
 **You are ready when** you can select the kernel, sign in to the correct tenant and run the first configuration cell of your chosen notebook without missing-setting errors. Later service calls also require the permissions and approvals in the preparation checklist.
 

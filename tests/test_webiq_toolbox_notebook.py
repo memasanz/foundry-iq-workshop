@@ -24,6 +24,7 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
         self.project.toolboxes.get.return_value = SimpleNamespace(default_version="1")
         self.project.toolboxes.update.return_value = SimpleNamespace(default_version="2")
         self.ns = {
+            "prefix": "alice01",
             "project": self.project,
             "project_endpoint": PROJECT_ENDPOINT,
             "mcp_url": WEBIQ_URL,

@@ -75,6 +75,7 @@ function global:az {
                     Method = $method
                     Url = $url
                     Body = $body
+                    BodyPath = $bodyPath
                     ResponsePath = $responsePath
                 })
                 if ($url -eq 'https://graph.microsoft.com/v1.0/applications' -and $method -eq 'POST') {
@@ -158,8 +159,17 @@ try {
     $global:TestApimWrites.Clear()
     "APIM_RESOURCE_ID=`"$apimId`"" | Set-Content -LiteralPath $secrets.FullName
     $output = & $policyScript @scriptArguments -WebIqApiKey $testKey 6>&1 | Out-String
-    Assert-Equal $global:TestApimWrites.Count 7 'Policy setup must create the named value, API, four operations and policy'
-    foreach ($write in $global:TestApimWrites) {
+    Assert-Equal $global:TestApimWrites.Count 8 'Policy setup must create the shared source, named value, API, four operations and policy'
+    $sources = @($global:TestApimWrites | Where-Object { $_.Url.StartsWith('https://workshop.search.windows.net/knowledgesources/') })
+    Assert-Equal $sources.Count 1 'The facilitator must create exactly one shared Search source'
+    Assert-Equal $sources[0].Body.name 'iq-workshop-webiq' 'Source and policy must use the same default name'
+    Assert-Equal $sources[0].Body.kind 'mcpServer' 'The shared source must use Web IQ MCP'
+    Assert-Equal $sources[0].Body.mcpServerParameters.serverURL 'https://api.microsoft.ai/v3/mcp' 'The shared source must point at Web IQ'
+    Assert-Equal $sources[0].Body.mcpServerParameters.authentication $null 'The source must not store the Web IQ key'
+    Assert-Equal $sources[0].Body.mcpServerParameters.tools[0].name 'web' 'The shared source must expose only the workshop web tool'
+    Assert-Equal (Test-Path -LiteralPath $sources[0].BodyPath) $false 'The shared-source request file must be deleted'
+    $armWrites = @($global:TestApimWrites | Where-Object { $_.Url.StartsWith('https://management.azure.com/') })
+    foreach ($write in $armWrites) {
         Assert-Equal $write.Url.StartsWith("https://management.azure.com$apimId/") $true '.env must override old deployment settings and target the existing gateway only'
     }
     $api = $global:TestApimWrites | Where-Object { $_.Body.properties.serviceUrl }
@@ -182,9 +192,15 @@ try {
     & $policyScript @scriptArguments -WebIqApiKey $testKey -WhatIf | Out-Null
     Assert-Equal $global:TestApimWrites.Count 0 'WhatIf must preserve the existing gateway and app'
     Clear-Content -LiteralPath $secrets.FullName
-    $output = & $policyScript @scriptArguments -WebIqApiKey $testKey 6>&1 | Out-String
-    Assert-Equal $global:TestApimWrites.Count 7 'Legacy deployment resource-ID settings must remain usable'
+    $output = & $policyScript @scriptArguments -WebIqApiKey $testKey -WebIqSourceName 'custom-shared-webiq' 6>&1 | Out-String
+    Assert-Equal $global:TestApimWrites.Count 8 'Legacy deployment resource-ID settings must remain usable'
     Assert-Equal $output.Contains('APIM_GATEWAY_URL=https://gateway.example.test') $true 'Settings fallback must select the existing gateway'
+    $source = $global:TestApimWrites | Where-Object { $_.Body.kind -eq 'mcpServer' }
+    Assert-Equal $source.Body.name 'custom-shared-webiq' 'A custom source name must be used for source creation'
+    Assert-Equal $source.Url.Contains('/custom-shared-webiq?api-version=2026-08-01-preview') $true 'The Search URL must use the same custom source name'
+    $policy = $global:TestApimWrites | Where-Object { $_.ResponsePath }
+    Assert-Equal $policy.Body.properties.value.Contains('name="custom-shared-webiq-header-value"') $true 'The policy must inject the key for the same custom source'
+    Assert-Equal $output.Contains('WEBIQ_APIM_SOURCE_NAME=custom-shared-webiq') $true 'Attendees must receive the configured shared source name'
 
     $global:TestApimWrites.Clear()
     $global:TestApimTenant = 'another-tenant'

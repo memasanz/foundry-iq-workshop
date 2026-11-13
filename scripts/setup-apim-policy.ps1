@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup for notebook 10: creates the APIM API and policy that sit in front of the Foundry IQ knowledge base.
+Facilitator pre-workshop setup for notebook 10: creates the shared Web IQ source and the APIM API and policy that sit in front of the Foundry IQ knowledge base.
 
 .DESCRIPTION
 Set APIM_RESOURCE_ID in .env and run scripts\setup-broker-app.ps1 first. This script then:
-  1. stores the Web IQ API key as a secret APIM named value (it never reaches attendees or Search)
+  1. creates the shared, keyless Web IQ knowledge source in Search (requires Search Service Contributor),
+     then stores the Web IQ API key as a secret APIM named value (it never reaches attendees or Search)
   2. creates the API 'iq-knowledge-base' (path /iq) in front of the Search service, with operations
        POST   /knowledgebases/{kbName}/retrieve
        POST/GET/DELETE /knowledgebases/{kbName}/mcp
@@ -91,6 +92,30 @@ if (-not $WebIqApiKey) {
 }
 $webIqKey = [System.Net.NetworkCredential]::new('', $WebIqApiKey).Password
 if (-not $webIqKey) { throw 'A Web IQ API key is required.' }
+
+if ($PSCmdlet.ShouldProcess($WebIqSourceName, 'Create the shared Web IQ knowledge source in Search')) {
+    $source = @{
+        name = $WebIqSourceName
+        kind = 'mcpServer'
+        description = 'Web IQ web grounding for current public information.'
+        resultsProcessing = 'rerank'
+        mcpServerParameters = @{
+            serverURL = 'https://api.microsoft.ai/v3/mcp'
+            authentication = $null
+            tools = @(@{ name = 'web'; outputParsing = @{ kind = 'auto' }; maxOutputTokens = 2000 })
+        }
+    }
+    $file = New-TemporaryFile
+    try {
+        [System.IO.File]::WriteAllText($file.FullName, ($source | ConvertTo-Json -Depth 10), [System.Text.UTF8Encoding]::new($false))
+        $sourceUrl = "$($settings.AZURE_SEARCH_ENDPOINT.TrimEnd('/'))/knowledgesources/$($WebIqSourceName)?api-version=2026-08-01-preview"
+        Invoke-Az rest --method PUT --url $sourceUrl --resource 'https://search.azure.com' `
+            --headers 'Content-Type=application/json' --body "@$file" --output none | Out-Null
+    }
+    finally {
+        Remove-Item -LiteralPath $file -Force
+    }
+}
 
 if ($PSCmdlet.ShouldProcess($apimName, 'Store the Web IQ key as secret named value webiq-api-key')) {
     Invoke-Arm "namedValues/webiq-api-key?$version" @{
