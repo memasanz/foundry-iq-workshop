@@ -210,6 +210,10 @@ After deployment, run the permissions script as an administrator with role-assig
 .\scripts\grant-workshop-access.ps1 -Users (Get-Content '.\attendees.txt')
 ```
 
+Example output showing newly assigned roles and existing assignments (user details redacted):
+
+![Workshop permission assignments showing each user's role and Assigned or Already assigned status](docs/grant-workshop-access.png)
+
 `-Users` accepts Microsoft Entra user principal names or user object IDs in the deployment tenant, not arbitrary contact email addresses. Invite external attendees as guests first, then use their **guest object IDs in the workshop tenant**. The script does not create users or send guest invitations. Do not commit attendee rosters to source control.
 
 The script reads resource IDs from `.env.azure`, validates that the scopes belong to its workshop resource group, resolves all attendees before making changes, and skips identical existing direct assignments. It targets the configured subscription without changing your CLI default. Use `-EnvironmentFile` to select another deployment's generated settings.
@@ -248,6 +252,113 @@ These are the **caller's setup permissions**. Azure subscription Owner alone doe
 The Search identity lookup only reads its principal ID so the script can configure the app's secretless federated trust. It does not read Search documents or grant SharePoint access. Existing Contributor or Owner access at the resource, resource-group or subscription scope already covers that lookup; no extra Reader assignment is needed.
 
 Use `-AppName` for the app registration's **exact display name** in the deployment tenant. If one app matches, the script configures that app; if none matches, it creates a new single-tenant app with that name. If multiple apps match, it stops without changing them; use a unique display name. Omitting `-AppName` uses `iq-workshop-sharepoint-indexer`.
+
+#### Administrator handoff: approve permissions and site Read once
+
+The original `setup-sharepoint-app.ps1` **still supports combined setup, consent and site grants**. For a separate administrator handoff, use the additional [`scripts\approve-sharepoint-app.ps1`](scripts/approve-sharepoint-app.ps1) entry point:
+
+1. **Facilitator/app owner:** configure the app and Search federation without requesting site access or granting admin consent. This requires app-management permission and Search read access, but not the site-grant administrator role:
+
+   ```powershell
+   .\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint Indexer'
+   ```
+
+   Keep the three printed settings for your local `.env`, and give the administrator the **tenant ID**, the printed **application client ID**, and the **site URL**. Site access and runtime consent remain outstanding at this point.
+
+2. **Authorized Global Administrator or Privileged Role Administrator:** from the repository root, sign in to that tenant and preview the approval:
+
+   ```powershell
+   az login --tenant '<tenant-id>' --allow-no-subscriptions
+
+   .\scripts\approve-sharepoint-app.ps1 `
+     -TenantId '<tenant-id>' `
+     -AppId '<application-client-id>' `
+     -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' `
+     -WhatIf
+   ```
+
+   Remove `-WhatIf` to approve and verify the four runtime **application** permissions and create/verify the app's site **Read** grant. No separate consent switch is needed: **running this approval script without `-WhatIf` explicitly approves those permissions**.
+
+The administrator needs Azure CLI and Graph authorization to read the app and manage application credentials and app-role assignments. Their administrator role does not automatically supply missing Graph token permissions. They do **not** need Search access, an Azure subscription role, your `.env` or `.env.azure`, or a delegated `Sites.FullControl.All` token. If handing off individual files rather than the repository, send **both** `approve-sharepoint-app.ps1` and its sibling `setup-sharepoint-app.ps1` in the same folder.
+
+| What the approval script does | Lasting result |
+|---|---|
+| Requires an existing app in the specified tenant with all four workshop application permissions already requested | No app creation, manifest changes, or federation changes |
+| Grants/verifies Graph `Files.Read.All` and `Sites.Selected`, plus SharePoint `Sites.Selected` and `User.Read.All` | Runtime application admin consent; **Graph `Files.Read.All` is tenant-wide file read**, not site-only access |
+| Temporarily grants application Graph `Sites.FullControl.All` and creates a 15-minute credential; uses an app-only token to grant/verify site Read | Site Read remains; cleanup of the newly added FullControl assignment and credential is attempted and verified |
+
+It does not approve unrelated requested permissions or delegated scopes. Existing runtime consents and readable site grants are reused. Existing broader permissions/credentials are preserved, with warnings for broader site grants or pre-existing Graph FullControl. Cleanup runs on success or failure; any cleanup failure reports manual-action instructions. Do not forcibly terminate or concurrently modify this app during bootstrap. Issued tokens can remain valid until expiry after revocation.
+
+The steps can be rerun with the same app client ID and site URL. A later site failure does not roll back runtime consent that already succeeded. After approval, the facilitator runs notebook 07's ingestion and allowed/restricted-user checks; the approval script does not prove end-to-end indexing or ACL enforcement.
+
+#### Combined app and site setup (app-only bootstrap)
+
+For the complete scripted setup, an authorized Global Administrator or Privileged Role Administrator with the required Graph app-management and app-role-assignment authorization runs the following from the repository root, after deployment has generated `.env.azure` and after signing in to that deployment's tenant:
+
+```powershell
+.\scripts\setup-sharepoint-app.ps1 `
+  -AppName 'Workshop SharePoint Indexer' `
+  -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' `
+  -BootstrapSiteAccess `
+  -GrantAdminConsent
+```
+
+Replace the app name and site URL for your tenant. This is the **setup script**: it creates/reuses the app, requests the runtime **application** permissions, configures federation with Search's managed identity, grants runtime admin consent, and creates/verifies the site Read grant using temporary **app-only** FullControl. It then attempts and verifies removal of the temporary permission and credential. No delegated `Sites.FullControl.All` token is used for the site grant. Administrator authorization for managing app permissions and credentials is still required.
+
+Copy the printed `SHAREPOINT_APP_CLIENT_ID`, `SHAREPOINT_APP_OBJECT_ID` and `SHAREPOINT_SEARCH_MI_CLIENT_ID` into your local `.env`. Re-running with the same unique app name, site URL and deployment settings reuses the app, trust and readable site grant. Existing broader permissions are preserved with warnings, so re-running does not enforce least privilege on an already overprivileged app. See the cleanup and token-expiry limitations below.
+
+If you omit `-GrantAdminConsent`, the script still configures the app and site grant, but does **not** approve the runtime API permissions. Configured permissions and a successful site grant alone do not prove the indexer is ready; verify runtime consent and run notebook 07's ingestion and allowed/restricted-user checks.
+
+**Don't want to grant `Sites.FullControl.All` to your CLI session or temporarily to the ingestion app?** Omit both `-SiteUrl` and `-BootstrapSiteAccess`:
+
+```powershell
+.\scripts\setup-sharepoint-app.ps1 -AppName 'Existing SharePoint Indexer'
+```
+
+This configures the app and Search federation without requiring `Sites.FullControl.All` or inspecting/changing site access. An authorized administrator must separately grant the ingestion app **Read** on the target site before notebook 07 can run; tenant admin consent for the requested API permissions is still required. The ingestion app does not need ongoing `Sites.FullControl.All`. Adding `-SiteUrl` uses delegated FullControl for site-grant setup; adding `-BootstrapSiteAccess` instead uses temporary application FullControl, so bootstrap is not a FullControl-free alternative.
+
+#### Grant site Read separately
+
+Use [`scripts\grant-sharepoint-site-read.ps1`](scripts/grant-sharepoint-site-read.ps1) to let an administrator grant site access **after** the app has been configured without `-SiteUrl`. It grants an **existing app** Read on **one site**; it does not configure the ingestion app or Search federation.
+
+After signing in with `az login` to the site's tenant, an authorized administrator can run:
+
+```powershell
+.\scripts\grant-sharepoint-site-read.ps1 -AppName 'Existing SharePoint Indexer' `
+  -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop' -WhatIf
+
+# Apply after reviewing the preview.
+.\scripts\grant-sharepoint-site-read.ps1 -AppName 'Existing SharePoint Indexer' `
+  -SiteUrl 'https://contoso.sharepoint.com/sites/iq-workshop'
+```
+
+| Parameter | Meaning |
+|---|---|
+| `-AppName` | Exact display name of an existing app in the signed-in tenant; duplicate names cause an error. |
+| `-AppId` | Application **client ID**, instead of `-AppName`; not the application or service-principal object ID. |
+| `-SiteUrl` | Required SharePoint HTTPS site URL, not a document sharing link. |
+| `-WhatIf` | Resolves the app and reads site permissions, but makes no changes; still requires read authorization. |
+
+This standalone script requires Azure CLI, access to read the app registration, and no `.env.azure` or Search access. Its delegated path requires **SharePoint Administrator or higher**, membership of the site, and delegated Graph **`Sites.FullControl.All` in the Azure CLI token**. Global Administrator can approve consent, but the role does not automatically add the scope to a token. The script does not request or consent this scope. Signing in with `Connect-MgGraph` does not authorize Azure CLI; those tools use separate tokens.
+
+The script prints the tenant and app client ID, checks all pages of existing site permissions, creates a missing Read grant, and reads it back to verify the app and role. Existing readable grants are preserved; broader grants produce a warning and are **not** downgraded. An unrecognized existing grant stops the script for manual review rather than creating a duplicate. It does not change API permissions, admin consent, or credentials, and never grants FullControl to the target app.
+
+**A successful site grant is not the whole setup:** tenant admin consent for the ingestion app's API permissions and its Search federation must still be configured. A 403 during site inspection means the caller's authorization needs checking, not that the ingestion app should receive FullControl.
+
+#### Other ways to grant site access
+
+Delegated authorization is **not mandatory for the Graph API itself**. Microsoft documents both delegated and application **`Sites.FullControl.All`** for [`POST /sites/{id}/permissions`](https://learn.microsoft.com/graph/api/site-post-permissions). Choose an approved administration path:
+
+| Path | Who or what authorizes the site grant | Target app's resulting site access |
+|---|---|---|
+| Standalone script above, or `setup-sharepoint-app.ps1 -SiteUrl` | A SharePoint Administrator or higher with site membership and a delegated FullControl token | Read, unless an existing broader grant is preserved |
+| `setup-sharepoint-app.ps1 -SiteUrl -BootstrapSiteAccess` | An authorized Entra administrator temporarily consents **application** FullControl to the ingestion app; the script uses an app-only token and attempts verified cleanup afterward | Read, unless an existing broader grant is preserved |
+| Existing approved administration app calling Graph | A separate administration app already consented to **application** FullControl; no delegated user token is required | Read when the administrator posts a `roles: ["read"]` grant |
+| PnP PowerShell | [`Grant-PnPEntraIDAppSitePermission`](https://pnp.github.io/powershell/cmdlets/Grant-PnPEntraIDAppSitePermission.html) with `-Permissions Read`; its documented requirement is delegated Graph FullControl | Read for a newly created grant |
+
+The standalone script does **not** implement the app-only path or bootstrap. An administrator can use approved Graph tooling instead; [the Search indexer guide](https://learn.microsoft.com/azure/search/search-how-to-index-sharepoint-online#configure-the-sharepoint-in-microsoft-365-indexer) provides Graph and PnP grant examples. Neither a different tool nor admin consent for `Sites.Selected` removes the need to authorize the explicit site grant. Do not replace site-scoped access with tenant-wide read permissions just to avoid the grant step.
+
+#### Other combined setup examples
 
 ```powershell
 # Existing app: use its exact display name.

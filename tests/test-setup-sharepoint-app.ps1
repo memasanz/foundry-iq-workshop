@@ -19,12 +19,16 @@ $global:TestPasswords = @(@{ keyId = 'existing-key'; displayName = 'existing-cre
 $global:TestBootstrapFailure = ''
 $global:TestTokenAttempts = 0
 $global:TestSleepCalls = 0
+$global:TestContextTenant = 'test-tenant'
+$global:TestAzureCalls = [System.Collections.Generic.List[string]]::new()
+$global:TestConsentFailure = ''
 
 function global:az {
     $arguments = @($args)
+    $global:TestAzureCalls.Add($arguments -join ' ')
     $global:LASTEXITCODE = 0
     switch ($arguments[0..1] -join ' ') {
-        'account show' { @{ tenantId = 'test-tenant' } | ConvertTo-Json -Compress }
+        'account show' { @{ tenantId = $global:TestContextTenant } | ConvertTo-Json -Compress }
         'resource show' { @{ identity = @{ principalId = 'search-principal' } } | ConvertTo-Json -Compress }
         'rest --method' {
             $method = $arguments[$arguments.IndexOf('--method') + 1]
@@ -48,6 +52,13 @@ function global:az {
                     $grant | ConvertTo-Json -Depth 10 -Compress
                 }
                 elseif ($method -eq 'POST' -and $path -eq '/v1.0/servicePrincipals/app-service-principal/appRoleAssignments') {
+                    if ($body.appRoleId -ne 'Sites.FullControl.All') {
+                        if ($global:TestConsentFailure -eq 'denied') { $global:LASTEXITCODE = 1; return }
+                        $assignment = @{ id = "$($body.resourceId)-$($body.appRoleId)"; resourceId = $body.resourceId; appRoleId = $body.appRoleId }
+                        if ($global:TestConsentFailure -ne 'verification') { $global:TestRoleAssignments += $assignment }
+                        $assignment | ConvertTo-Json -Compress
+                        return
+                    }
                     $assignment = @{ id = 'bootstrap-role'; resourceId = $body.resourceId; appRoleId = $body.appRoleId }
                     $global:TestRoleAssignments += $assignment
                     if ($global:TestBootstrapFailure -eq 'role-response') {
@@ -125,14 +136,16 @@ function global:az {
                 }) } | ConvertTo-Json -Depth 5 -Compress
             }
             elseif ($path -eq '/v1.0/servicePrincipals') {
-                if ($query -like "*appId eq 'app-client'*") {
+                if ($query -like "*appId eq 'app-client'*" -or
+                    ($global:TestAppMatches.Count -eq 1 -and $query -like "*appId eq '$($global:TestAppMatches[0].appId)'*")) {
                     @{ value = @(@{ id = 'app-service-principal' }) } | ConvertTo-Json -Depth 5 -Compress
                 }
                 else {
                     $roles = foreach ($name in @('Files.Read.All', 'Sites.Selected', 'User.Read.All', 'Sites.FullControl.All')) {
                         @{ id = $name; value = $name; isEnabled = $true; allowedMemberTypes = @('Application') }
                     }
-                    @{ value = @(@{ id = 'graph-api-principal'; appRoles = @($roles) }) } | ConvertTo-Json -Depth 5 -Compress
+                    $apiId = if ($query -like '*00000003-0000-0ff1-ce00-000000000000*') { 'sharepoint-api-principal' } else { 'graph-api-principal' }
+                    @{ value = @(@{ id = $apiId; appRoles = @($roles) }) } | ConvertTo-Json -Depth 5 -Compress
                 }
             }
             else { throw "Unexpected Graph request: $method $url" }
@@ -444,6 +457,105 @@ try {
         $failed = $true
     }
     Assert-Equal $failed $true 'Bootstrap must require an explicit site URL'
+
+    $approvalScriptPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\approve-sharepoint-app.ps1'
+    $approvalParams = @{
+        TenantId = '11111111-1111-1111-1111-111111111111'
+        AppId = '22222222-2222-2222-2222-222222222222'
+        SiteUrl = $siteUrl
+    }
+    $global:TestContextTenant = $approvalParams.TenantId
+    $global:TestBootstrapFailure = ''
+    $global:TestPasswords = @(@{ keyId = 'existing-key'; displayName = 'existing-credential' })
+    $global:TestRoleAssignments = @()
+    $global:TestSitePermissions = @()
+    $global:TestSiteNextPage = @()
+    $runtimeRequests = @(
+        @{ resourceAppId = '00000003-0000-0000-c000-000000000000'; resourceAccess = @(
+            @{ id = 'Files.Read.All'; type = 'Role' }, @{ id = 'Sites.Selected'; type = 'Role' },
+            @{ id = 'unrelated-delegated'; type = 'Scope' }, @{ id = 'unrelated-application'; type = 'Role' }
+        ) },
+        @{ resourceAppId = '00000003-0000-0ff1-ce00-000000000000'; resourceAccess = @(
+            @{ id = 'Sites.Selected'; type = 'Role' }, @{ id = 'User.Read.All'; type = 'Role' }
+        ) }
+    )
+    $approvalApp = @{
+        id = 'app-object'; appId = $approvalParams.AppId; displayName = 'Existing Workshop App'
+        requiredResourceAccess = $runtimeRequests
+    }
+    $global:TestAppMatches = @($approvalApp)
+    $global:TestAppWrites.Clear()
+    $global:TestTokenAttempts = 0
+    & $approvalScriptPath @approvalParams -WhatIf | Out-Null
+    Assert-Equal $global:TestAppWrites.Count 0 'Administrator entry point must honor WhatIf across the child script'
+    Assert-Equal $global:TestTokenAttempts 0 'Administrator WhatIf must not acquire bootstrap tokens'
+
+    $global:TestAzureCalls.Clear()
+    $approvalOutput = & $approvalScriptPath @approvalParams *>&1
+    Assert-Equal ($global:TestAppFilter -like "*appId eq '$($approvalParams.AppId)'*") $true 'Approval must select an existing app by client ID'
+    Assert-Equal @($global:TestAzureCalls | Where-Object { $_ -like 'resource show*' -or $_ -like '*federatedIdentityCredentials*' }).Count 0 'Admin approval must not require Search reads or touch federation'
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Method -eq 'PATCH' -or $_.Path -eq '/v1.0/applications' }).Count 0 'Approval must not modify the manifest or create an app'
+    Assert-Equal $global:TestRoleAssignments.Count 4 'All four runtime application consents must persist after cleanup'
+    Assert-Equal @($global:TestRoleAssignments | Where-Object { $_.appRoleId -like '*FullControl*' -or $_.appRoleId -like 'unrelated*' }).Count 0 'Temporary FullControl must be removed; unrelated requested permissions must not be approved'
+    Assert-Equal @($global:TestRoleAssignments | Where-Object { $_.resourceId -eq 'sharepoint-api-principal' }).Count 2 'SharePoint API consents must target its own service principal'
+    Assert-Equal ($global:TestPasswords.keyId -join ',') 'existing-key' 'Admin approval must clean up temporary credentials'
+    Assert-Equal ($global:TestSitePermissions[0].roles -join ',') 'read' 'Admin approval must grant only site Read'
+    Assert-Equal (($approvalOutput | Out-String) -match 'test-secret-not-for-output|test-bootstrap-token') $false 'Approval output must not leak bootstrap secrets'
+
+    $global:TestAppWrites.Clear()
+    & $approvalScriptPath @approvalParams | Out-Null
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '*/appRoleAssignments' -and $_.Body.appRoleId -ne 'Sites.FullControl.All' }).Count 0 'Rerunning approval must not duplicate runtime consents'
+    Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -eq '/v1.0/sites/site-id/permissions' }).Count 0 'Rerunning approval must preserve the existing site grant'
+
+    $global:TestAppWrites.Clear()
+    & $scriptPath -ApprovalOnly @approvalParams -GrantAdminConsent -BootstrapSiteAccess -WhatIf -EnvironmentFile 'Z:\nonexistent-workshop-settings.env' | Out-Null
+    Assert-Equal $global:TestAppWrites.Count 0 'Approval mode must not need a deployment settings file'
+
+    $global:TestAppMatches = @()
+    $failed = $false
+    try { & $approvalScriptPath @approvalParams | Out-Null }
+    catch { $failed = $_.Exception.Message -like 'Approval requires exactly one existing app*' }
+    Assert-Equal $failed $true 'Approval must reject a missing app rather than create it'
+    Assert-Equal $global:TestAppWrites.Count 0 'A missing app must not cause approval writes'
+
+    $global:TestAppMatches = @(@{ id = 'app-object'; appId = $approvalParams.AppId; displayName = 'Unconfigured App'; requiredResourceAccess = @() })
+    $failed = $false
+    try { & $approvalScriptPath @approvalParams | Out-Null }
+    catch {
+        if ($_.Exception.Message -notlike '*missing a required workshop application permission*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Approval must reject missing runtime permission requests'
+    Assert-Equal $global:TestAppWrites.Count 0 'Missing requests must not cause permission or manifest writes'
+
+    $global:TestAppMatches = @($approvalApp)
+    $global:TestContextTenant = 'different-tenant'
+    $failed = $false
+    try { & $approvalScriptPath @approvalParams | Out-Null }
+    catch { $failed = $_.Exception.Message -like '*tenant does not match*' }
+    Assert-Equal $failed $true 'Approval must reject the wrong signed-in tenant'
+    Assert-Equal $global:TestAppWrites.Count 0 'Wrong-tenant approval must not write'
+    $global:TestContextTenant = $approvalParams.TenantId
+
+    foreach ($consentFailure in @('denied', 'verification')) {
+        $global:TestConsentFailure = $consentFailure
+        $global:TestRoleAssignments = @()
+        $global:TestAppWrites.Clear()
+        $failed = $false
+        try { & $approvalScriptPath @approvalParams | Out-Null } catch { $failed = $true }
+        Assert-Equal $failed $true "Runtime consent $consentFailure must stop approval"
+        Assert-Equal @($global:TestAppWrites | Where-Object { $_.Path -like '*/addPassword' }).Count 0 'Failed runtime approval must not start temporary site bootstrap'
+    }
+    $global:TestConsentFailure = ''
+    $global:TestRoleAssignments = @()
+    $global:TestSitePermissions = @()
+    $global:TestBootstrapFailure = 'site-grant'
+    $failed = $false
+    try { & $approvalScriptPath @approvalParams | Out-Null } catch { $failed = $true }
+    Assert-Equal $failed $true 'Admin approval must fail if the site grant fails'
+    Assert-Equal $global:TestRoleAssignments.Count 4 'Runtime consent must remain while temporary FullControl is cleaned up after site failure'
+    Assert-Equal ($global:TestPasswords.keyId -join ',') 'existing-key' 'Admin approval site failure must still remove its temporary credential'
+    Write-Host 'Administrator approval checks passed: targeted application consent, no Search dependency, tenant checks, WhatIf, reruns and failure cleanup.'
     Write-Host 'SharePoint app checks passed: names, preserved permissions, Read grants, bootstrap retries/cleanup, pagination, authorization and WhatIf.'
 }
 finally {
@@ -454,6 +566,7 @@ finally {
     Remove-Variable TestAppMatches, TestAppWrites, TestAppFilter -Scope Global
     Remove-Variable TestSitePermissions, TestSiteNextPage, TestSiteDenied, TestVerifiedGrant -Scope Global
     Remove-Variable TestRoleAssignments, TestPasswords, TestBootstrapFailure, TestTokenAttempts, TestSleepCalls -Scope Global
+    Remove-Variable TestContextTenant, TestAzureCalls, TestConsentFailure -Scope Global
 }
 
 if ($env:OS -eq 'Windows_NT') {

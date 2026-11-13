@@ -29,6 +29,12 @@ Privileged Role Administrator or Global Administrator, and Graph authorization t
 role assignments and credentials. Cleanup is attempted on success and failure. Pre-existing
 credentials and role assignments are preserved. Runtime permissions still need admin consent.
 
+.PARAMETER ApprovalOnly
+Administrator handoff mode, normally invoked by approve-sharepoint-app.ps1. Requires
+TenantId, AppId, SiteUrl, GrantAdminConsent and BootstrapSiteAccess. Approves only the
+four workshop application permissions already requested on an existing app and grants
+site Read. Does not read deployment settings, configure Search, or change the app manifest.
+
 .EXAMPLE
 .\scripts\setup-sharepoint-app.ps1 -AppName 'Workshop SharePoint' -WhatIf
 
@@ -45,6 +51,9 @@ param(
     [string]$SiteUrl,
     [switch]$GrantAdminConsent,
     [switch]$BootstrapSiteAccess,
+    [switch]$ApprovalOnly,
+    [string]$TenantId,
+    [string]$AppId,
     [string]$EnvironmentFile = (Join-Path (Split-Path $PSScriptRoot -Parent) '.env.azure')
 )
 
@@ -112,14 +121,23 @@ if ($BootstrapSiteAccess -and -not $SiteUrl) {
     throw '-BootstrapSiteAccess requires -SiteUrl.'
 }
 
-if (-not (Test-Path -LiteralPath $EnvironmentFile -PathType Leaf)) {
-    throw "Deployment settings not found: $EnvironmentFile. Run scripts\deploy.ps1 first."
+if ($ApprovalOnly) {
+    if (-not $TenantId -or -not $AppId -or -not $SiteUrl -or -not $GrantAdminConsent -or -not $BootstrapSiteAccess) {
+        throw 'ApprovalOnly requires TenantId, AppId, SiteUrl, GrantAdminConsent and BootstrapSiteAccess.'
+    }
+    $context = Invoke-Az account show --output json | ConvertFrom-Json
 }
-$settings = Get-Content -LiteralPath $EnvironmentFile -Raw | ConvertFrom-StringData
-$tenantId = $settings.AZURE_TENANT_ID
-$searchId = $settings.AZURE_SEARCH_RESOURCE_ID
-$context = Invoke-Az account show --subscription $settings.AZURE_SUBSCRIPTION_ID --output json | ConvertFrom-Json
-if ($context.tenantId -ne $tenantId) { throw 'Azure login tenant does not match the deployment settings.' }
+else {
+    if ($TenantId -or $AppId) { throw 'TenantId and AppId are only supported with ApprovalOnly.' }
+    if (-not (Test-Path -LiteralPath $EnvironmentFile -PathType Leaf)) {
+        throw "Deployment settings not found: $EnvironmentFile. Run scripts\deploy.ps1 first."
+    }
+    $settings = Get-Content -LiteralPath $EnvironmentFile -Raw | ConvertFrom-StringData
+    $tenantId = $settings.AZURE_TENANT_ID
+    $searchId = $settings.AZURE_SEARCH_RESOURCE_ID
+    $context = Invoke-Az account show --subscription $settings.AZURE_SUBSCRIPTION_ID --output json | ConvertFrom-Json
+}
+if ($context.tenantId -ne $tenantId) { throw 'Azure login tenant does not match the requested tenant or deployment settings.' }
 
 $sitePermissions = @()
 if ($PSBoundParameters.ContainsKey('SiteUrl')) {
@@ -145,12 +163,14 @@ if ($PSBoundParameters.ContainsKey('SiteUrl')) {
     }
 }
 
-# The Search service identity is what the app will trust.
-$search = Invoke-Az resource show --ids $searchId --output json | ConvertFrom-Json
-if (-not $search.identity.principalId) { throw 'The Search service has no system-assigned managed identity.' }
-$miPrincipalId = $search.identity.principalId
-$miServicePrincipal = Invoke-Graph GET "$graph/servicePrincipals/$miPrincipalId`?`$select=id,appId"
-$miClientId = $miServicePrincipal.appId
+if (-not $ApprovalOnly) {
+    # The Search service identity is what the app will trust.
+    $search = Invoke-Az resource show --ids $searchId --output json | ConvertFrom-Json
+    if (-not $search.identity.principalId) { throw 'The Search service has no system-assigned managed identity.' }
+    $miPrincipalId = $search.identity.principalId
+    $miServicePrincipal = Invoke-Graph GET "$graph/servicePrincipals/$miPrincipalId`?`$select=id,appId"
+    $miClientId = $miServicePrincipal.appId
+}
 
 # Resolve permission IDs by name so nothing is hard-coded.
 $permissions = @(
@@ -158,9 +178,11 @@ $permissions = @(
     @{ Api = '00000003-0000-0ff1-ce00-000000000000'; Names = @('Sites.Selected', 'User.Read.All') }
 )
 $requiredAccess = @()
+$apiPrincipals = @{}
 foreach ($permission in $permissions) {
     $api = (Invoke-Graph GET "$graph/servicePrincipals?`$filter=appId eq '$($permission.Api)'&`$select=id,appRoles").value
     if ($api.Count -ne 1) { throw "Expected one API service principal for $($permission.Api)." }
+    $apiPrincipals[$permission.Api] = $api[0]
     if ($permission.Api -eq '00000003-0000-0000-c000-000000000000') { $graphApi = $api[0] }
     $access = foreach ($name in $permission.Names) {
         $role = $api[0].appRoles | Where-Object { $_.value -eq $name -and $_.isEnabled -and 'Application' -in $_.allowedMemberTypes }
@@ -170,35 +192,56 @@ foreach ($permission in $permissions) {
     $requiredAccess += @{ resourceAppId = $permission.Api; resourceAccess = @($access) }
 }
 
-$appFilter = [Uri]::EscapeDataString("displayName eq '$($AppName.Replace("'", "''"))'")
-$existing = (Invoke-Graph GET "$graph/applications?`$filter=$appFilter&`$select=id,appId,requiredResourceAccess").value
-if ($existing.Count -gt 1) { throw "More than one app named $AppName exists. Use a unique app display name." }
-if ($existing.Count -eq 1) {
+$appFilter = if ($ApprovalOnly) { [Uri]::EscapeDataString("appId eq '$($AppId.Replace("'", "''"))'") }
+else { [Uri]::EscapeDataString("displayName eq '$($AppName.Replace("'", "''"))'") }
+$select = if ($ApprovalOnly) { 'id,appId,displayName,requiredResourceAccess' } else { 'id,appId,requiredResourceAccess' }
+$existing = (Invoke-Graph GET "$graph/applications?`$filter=$appFilter&`$select=$select").value
+if ($ApprovalOnly) {
+    if ($existing.Count -ne 1) { throw 'Approval requires exactly one existing app with the supplied client ID in the signed-in tenant.' }
     $app = $existing[0]
-    Write-Host "Reusing app $AppName ($($app.appId))."
-    $mergedAccess = @($app.requiredResourceAccess | Where-Object { $_ })
+    $AppName = $app.displayName
     foreach ($required in $requiredAccess) {
-        $resource = $mergedAccess | Where-Object { $_.resourceAppId -eq $required.resourceAppId }
-        if ($resource) {
-            foreach ($access in $required.resourceAccess) {
-                if (-not ($resource.resourceAccess | Where-Object { $_.id -eq $access.id -and $_.type -eq $access.type })) {
-                    $resource.resourceAccess = @($resource.resourceAccess) + $access
-                }
+        $requested = @($app.requiredResourceAccess |
+            Where-Object { $_.resourceAppId -eq $required.resourceAppId } |
+            ForEach-Object { $_.resourceAccess })
+        foreach ($access in $required.resourceAccess) {
+            if (-not ($requested | Where-Object { $_.id -eq $access.id -and $_.type -eq 'Role' })) {
+                throw 'The existing app is missing a required workshop application permission. Run setup-sharepoint-app.ps1 without SiteUrl first; no approval changes were made.'
             }
         }
-        else { $mergedAccess += $required }
     }
-    if ($PSCmdlet.ShouldProcess($AppName, 'Update required permissions')) {
-        Invoke-Graph PATCH "$graph/applications/$($app.id)" @{ requiredResourceAccess = $mergedAccess } | Out-Null
-    }
+    Write-Host "Approving existing app $AppName ($($app.appId)) in tenant $tenantId."
+    Write-Warning 'Runtime consent includes Microsoft Graph Files.Read.All (tenant-wide file read), not only site-scoped access.'
 }
-elseif ($PSCmdlet.ShouldProcess($AppName, 'Create app registration')) {
-    $app = Invoke-Graph POST "$graph/applications" @{
-        displayName = $AppName; signInAudience = 'AzureADMyOrg'; requiredResourceAccess = $requiredAccess
+else {
+    if ($existing.Count -gt 1) { throw "More than one app named $AppName exists. Use a unique app display name." }
+    if ($existing.Count -eq 1) {
+        $app = $existing[0]
+        Write-Host "Reusing app $AppName ($($app.appId))."
+        $mergedAccess = @($app.requiredResourceAccess | Where-Object { $_ })
+        foreach ($required in $requiredAccess) {
+            $resource = $mergedAccess | Where-Object { $_.resourceAppId -eq $required.resourceAppId }
+            if ($resource) {
+                foreach ($access in $required.resourceAccess) {
+                    if (-not ($resource.resourceAccess | Where-Object { $_.id -eq $access.id -and $_.type -eq $access.type })) {
+                        $resource.resourceAccess = @($resource.resourceAccess) + $access
+                    }
+                }
+            }
+            else { $mergedAccess += $required }
+        }
+        if ($PSCmdlet.ShouldProcess($AppName, 'Update required permissions')) {
+            Invoke-Graph PATCH "$graph/applications/$($app.id)" @{ requiredResourceAccess = $mergedAccess } | Out-Null
+        }
     }
-    Write-Host "Created app $AppName ($($app.appId))."
+    elseif ($PSCmdlet.ShouldProcess($AppName, 'Create app registration')) {
+        $app = Invoke-Graph POST "$graph/applications" @{
+            displayName = $AppName; signInAudience = 'AzureADMyOrg'; requiredResourceAccess = $requiredAccess
+        }
+        Write-Host "Created app $AppName ($($app.appId))."
+    }
+    else { return }
 }
-else { return }
 
 $servicePrincipal = (Invoke-Graph GET "$graph/servicePrincipals?`$filter=appId eq '$($app.appId)'&`$select=id").value
 if (-not $servicePrincipal) {
@@ -207,32 +250,62 @@ if (-not $servicePrincipal) {
     }
 }
 
-$issuer = "https://login.microsoftonline.com/$tenantId/v2.0"
-$trusts = (Invoke-Graph GET "$graph/applications/$($app.id)/federatedIdentityCredentials").value
-if (-not ($trusts | Where-Object { $_.issuer -eq $issuer -and $_.subject -eq $miPrincipalId })) {
-    if ($PSCmdlet.ShouldProcess($AppName, 'Add federated credential for the Search managed identity')) {
-        Invoke-Graph POST "$graph/applications/$($app.id)/federatedIdentityCredentials" @{
-            name = 'search-managed-identity'; issuer = $issuer; subject = $miPrincipalId
-            audiences = @('api://AzureADTokenExchange')
-        } | Out-Null
+if (-not $ApprovalOnly) {
+    $issuer = "https://login.microsoftonline.com/$tenantId/v2.0"
+    $trusts = (Invoke-Graph GET "$graph/applications/$($app.id)/federatedIdentityCredentials").value
+    if (-not ($trusts | Where-Object { $_.issuer -eq $issuer -and $_.subject -eq $miPrincipalId })) {
+        if ($PSCmdlet.ShouldProcess($AppName, 'Add federated credential for the Search managed identity')) {
+            Invoke-Graph POST "$graph/applications/$($app.id)/federatedIdentityCredentials" @{
+                name = 'search-managed-identity'; issuer = $issuer; subject = $miPrincipalId
+                audiences = @('api://AzureADTokenExchange')
+            } | Out-Null
+        }
     }
+    else { Write-Host 'Federated credential already present.' }
 }
-else { Write-Host 'Federated credential already present.' }
 
 if ($GrantAdminConsent) {
     if ($PSCmdlet.ShouldProcess($AppName, 'Grant tenant admin consent')) {
-        Invoke-Az ad app permission admin-consent --id $app.appId | Out-Null
-        Write-Host 'Admin consent granted.'
+        if ($ApprovalOnly) {
+            $runtimeAssignmentUrl = "$graph/servicePrincipals/$($servicePrincipal.id)/appRoleAssignments"
+            $runtimeAssignments = @(Get-GraphCollection $runtimeAssignmentUrl)
+            foreach ($required in $requiredAccess) {
+                $resourceId = $apiPrincipals[$required.resourceAppId].id
+                foreach ($access in $required.resourceAccess) {
+                    if (-not ($runtimeAssignments | Where-Object { $_.resourceId -eq $resourceId -and $_.appRoleId -eq $access.id })) {
+                        Invoke-Graph POST $runtimeAssignmentUrl @{
+                            principalId = $servicePrincipal.id; resourceId = $resourceId; appRoleId = $access.id
+                        } | Out-Null
+                    }
+                }
+            }
+            $runtimeAssignments = @(Get-GraphCollection $runtimeAssignmentUrl)
+            foreach ($required in $requiredAccess) {
+                $resourceId = $apiPrincipals[$required.resourceAppId].id
+                foreach ($access in $required.resourceAccess) {
+                    if (-not ($runtimeAssignments | Where-Object { $_.resourceId -eq $resourceId -and $_.appRoleId -eq $access.id })) {
+                        throw 'Runtime application consent could not be verified. Some approvals may already have succeeded; review before retrying.'
+                    }
+                }
+            }
+            Write-Host 'The four workshop runtime application permissions are consented and verified. Other requested permissions were not consented.'
+        }
+        else {
+            Invoke-Az ad app permission admin-consent --id $app.appId | Out-Null
+            Write-Host 'Admin consent granted.'
+        }
     }
 }
 else {
     Write-Host 'Admin consent NOT granted. Re-run with -GrantAdminConsent, or approve in Entra > App registrations > API permissions.'
 }
 
-Write-Host "`nAdd these to .env for notebook 07:"
-Write-Host "SHAREPOINT_APP_CLIENT_ID=$($app.appId)"
-Write-Host "SHAREPOINT_APP_OBJECT_ID=$($app.id)"
-Write-Host "SHAREPOINT_SEARCH_MI_CLIENT_ID=$miClientId"
+if (-not $ApprovalOnly) {
+    Write-Host "`nAdd these to .env for notebook 07:"
+    Write-Host "SHAREPOINT_APP_CLIENT_ID=$($app.appId)"
+    Write-Host "SHAREPOINT_APP_OBJECT_ID=$($app.id)"
+    Write-Host "SHAREPOINT_SEARCH_MI_CLIENT_ID=$miClientId"
+}
 
 if ($SiteUrl) {
     $siteToken = $null
