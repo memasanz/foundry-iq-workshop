@@ -4,11 +4,14 @@ import zipfile
 from pathlib import Path
 from unittest.mock import Mock
 
+from azure.ai.projects.models import AgentVersionStatus
+
 from test_notebooks import code_cell, http_response
 
 TOOLBOX = "12-foundry-iq-toolbox-agent.ipynb"
 SEARCH = "https://workshop.search.windows.net"
 SEARCH_ID = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Search/searchServices/workshop"
+PROJECT_ID = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/workshop/projects/workshop"
 PRINCIPAL = "55555555-5555-5555-5555-555555555555"
 
 
@@ -25,7 +28,9 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
             "api_version": "2026-08-01-preview", "prefix": "alice01",
             "blob_source_name": "alice01-kb-blob", "knowledge_base_name": "alice01-toolbox-kb",
             "toolbox_name": "alice01-iq-toolbox", "agent_name": "alice01-iq-agent",
-            "connection_name": "iq-workshop-search-mcp", "model_name": "workshop-model",
+            "connection_name": "alice01-iq-search-mcp",
+            "connection_id": f"{PROJECT_ID}/connections/alice01-iq-search-mcp",
+            "model_name": "workshop-model",
             "project_client": Mock(),
             "knowledge_base_mcp_url": f"{SEARCH}/knowledgebases/alice01-toolbox-kb/mcp?api-version=2026-08-01-preview",
         }
@@ -52,20 +57,51 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "notebook 09"):
             exec(code_cell(TOOLBOX, "create-knowledge-base"), self.ns)
 
-    def test_toolbox_tool_points_at_kb_mcp_with_shared_connection_and_is_promoted(self):
+    def test_toolbox_creates_agent_identity_connection_and_promotes_version(self):
         client = self.ns["project_client"]
-        client.connections.get.return_value = Mock(id="conn-id")
-        client.connections.get.return_value.name = "iq-workshop-search-mcp"
+        self.ns["requests"].put.return_value = http_response(201, {})
         client.toolboxes.create_version.return_value = Mock(version="2")
         client.toolboxes.get.return_value = Mock(default_version="1")
         client.toolboxes.update.return_value = Mock(default_version="2")
         client.toolboxes.update.return_value.name = "alice01-iq-toolbox"
         exec(code_cell(TOOLBOX, "create-toolbox"), self.ns)
+        call = self.ns["requests"].put.call_args
+        self.assertEqual(call.args[0], f"https://management.azure.com{self.ns['connection_id']}?api-version=2025-04-01-preview")
+        self.assertEqual(call.kwargs["headers"], {"Authorization": "Bearer arm-token"})
+        self.assertEqual(call.kwargs["json"], {"properties": {
+            "category": "RemoteTool",
+            "authType": "AgenticIdentityToken",
+            "target": self.ns["knowledge_base_mcp_url"],
+            "audience": "https://search.azure.com",
+            "isSharedToAll": True,
+            "metadata": {"ApiType": "Azure"},
+        }})
+        client.connections.get.assert_not_called()
         tool = client.toolboxes.create_version.call_args.kwargs["tools"][0]
         self.assertEqual(tool.server_url, self.ns["knowledge_base_mcp_url"])
-        self.assertEqual(tool.project_connection_id, "conn-id")
+        self.assertEqual(tool.project_connection_id, self.ns["connection_id"])
         self.assertEqual(tool.require_approval, "never")
         client.toolboxes.update.assert_called_once_with("alice01-iq-toolbox", default_version="2")
+
+    def test_connection_creation_is_repeatable_and_keeps_default_toolbox_version(self):
+        client = self.ns["project_client"]
+        self.ns["requests"].put.return_value = http_response(200, {})
+        client.toolboxes.create_version.return_value = Mock(version="2")
+        client.toolboxes.get.return_value = Mock(default_version="2")
+        for _ in range(2):
+            exec(code_cell(TOOLBOX, "create-toolbox"), self.ns)
+        urls = [call.args[0] for call in self.ns["requests"].put.call_args_list]
+        self.assertEqual(len(urls), 2)
+        self.assertEqual(urls[0], urls[1])
+        client.toolboxes.update.assert_not_called()
+
+    def test_connection_failure_stops_before_creating_toolbox(self):
+        for status in (403, 500):
+            with self.subTest(status=status):
+                self.ns["requests"].put.return_value = http_response(status, {})
+                with self.assertRaisesRegex(Exception, f"HTTP {status}"):
+                    exec(code_cell(TOOLBOX, "create-toolbox"), self.ns)
+                self.ns["project_client"].toolboxes.create_version.assert_not_called()
 
     def test_agent_code_has_no_search_details_and_deploy_passes_toolbox_name(self):
         exec(code_cell(TOOLBOX, "write-agent-files"), self.ns)
@@ -76,11 +112,14 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
             self.assertNotIn(forbidden, main)
         client = self.ns["project_client"]
         client.agents.create_version_from_code.return_value = Mock(version="1")
-        client.agents.get_version.return_value = Mock(version="1", status="active")
+        client.agents.get_version.side_effect = [Mock(version="1", status=AgentVersionStatus.ACTIVE)]
         exec(code_cell(TOOLBOX, "deploy"), self.ns)
         definition = client.agents.create_version_from_code.call_args.kwargs["definition"]
         self.assertEqual(definition.environment_variables["TOOLBOX_NAME"], "alice01-iq-toolbox")
         self.assertEqual(definition.code_configuration.dependency_resolution, "remote_build")
+        self.assertEqual(definition.code_configuration.entry_point, ["python", "main.py"])
+        client.agents.get_version.assert_called_once_with("alice01-iq-agent", "1")
+        self.ns["time"].sleep.assert_not_called()
 
     def grant(self, status):
         self.ns["version"] = Mock(instance_identity=Mock(principal_id=PRINCIPAL))
@@ -112,6 +151,9 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
         exec(code_cell(TOOLBOX, "cleanup").replace("CLEAN_UP = False", "CLEAN_UP = True"), self.ns)
         self.ns["project_client"].agents.delete.assert_called_once_with("alice01-iq-agent")
         self.ns["project_client"].toolboxes.delete.assert_called_once_with("alice01-iq-toolbox")
+        connection_delete = self.ns["requests"].delete.call_args_list[0]
+        self.assertEqual(connection_delete.args[0], f"https://management.azure.com{self.ns['connection_id']}?api-version=2025-04-01-preview")
+        self.assertEqual(connection_delete.kwargs["headers"], {"Authorization": "Bearer arm-token"})
         self.assertIn("alice01-toolbox-kb", self.ns["requests"].delete.call_args.args[0])
 
 

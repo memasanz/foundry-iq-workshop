@@ -400,17 +400,13 @@ The setup scripts target only this gateway's workshop API and named values, not 
 
 APIM charges depend on the existing gateway's tier. Because header names embed the source name, the policy is written for **one shared Web IQ source** (`-WebIqSourceName`, default `iq-workshop-webiq`). `setup-apim-policy.ps1` creates or updates it once during facilitator setup; notebook 10 only reads it, so attendees do not overwrite shared configuration. Existing workshops should rerun that script before notebook 10 if the source is missing. Give attendees `BROKER_APP_CLIENT_ID`, `APIM_GATEWAY_URL` and `WEBIQ_APIM_SOURCE_NAME` (printed by the scripts). The APIM named-value secrets are visible to anyone with APIM contributor access; use Key Vault references for production.
 
-## 5. Set up the toolbox connection (facilitator, before the workshop; notebook 12)
+## 5. Toolbox connection and agent access (notebook 12)
 
-Create the shared toolbox connection once as the facilitator:
+Notebook 12 creates or updates each user's `{prefix}-iq-search-mcp` project connection directly in Python before creating the toolbox. No pre-created connection, `TOOLBOX_CONNECTION_NAME` setting or separate connection setup script is required. The signed-in user needs project connection-write permission (`Microsoft.CognitiveServices/accounts/projects/connections/write`), included in the workshop's Foundry Owner grant.
 
-```powershell
-azd extension install azure.ai.agents   # once
-.\scripts\setup-toolbox-connection.ps1 -WhatIf   # preview
-.\scripts\setup-toolbox-connection.ps1
-```
+The connection targets that user's knowledge-base MCP endpoint with `AgenticIdentityToken` authentication and audience `https://search.azure.com`. Foundry calls Search as the agent, not the user or project identity; no secret is stored. Opt-in cleanup removes the user's connection along with the agent, toolbox and knowledge base.
 
-This creates the shared connection `iq-workshop-search-mcp` (`remote-tool`, `agentic-identity`, audience `https://search.azure.com`). Each attendee's toolbox tool carries its own `server_url` (their knowledge base), so one connection serves everyone. No secret is stored.
+The existing `setup-toolbox-connection.ps1` remains available for optional shared-connection setups, but notebook 12 no longer uses its shared connection.
 
 **Per-agent access.** The agent calls Search as its own Entra identity, created when the agent is deployed, so it cannot be granted in advance. Notebook 12 prints the identity's principal ID and tries to assign **Search Index Data Reader** (read-only, Search service scope) itself. Attendees normally cannot assign roles, so expect to run, with the printed IDs:
 
@@ -418,7 +414,7 @@ This creates the shared connection `iq-workshop-search-mcp` (`remote-tool`, `age
 .\scripts\grant-agent-search-access.ps1 -PrincipalId <id1>,<id2>
 ```
 
-To skip this per attendee, you could instead give attendees a constrained *Role Based Access Control Administrator* role (limited to Search Index Data Reader) on the Search service; this workshop does not do that by default. Attendees need `TOOLBOX_CONNECTION_NAME` in `.env` only if you change the default name.
+To skip this per attendee, you could instead give attendees a constrained *Role Based Access Control Administrator* role (limited to Search Index Data Reader) on the Search service; this workshop does not do that by default.
 
 ## 6. Grant attendee access
 

@@ -4,6 +4,8 @@ import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+from azure.ai.projects.models import AgentVersionStatus
+
 from test_notebooks import code_cell
 
 HOSTED = "11-hosted-agent.ipynb"
@@ -48,18 +50,36 @@ class HostedAgentNotebookTests(unittest.TestCase):
         self.assertEqual(args[0], "alice01-hosted-agent")
         definition = kwargs["definition"]
         self.assertEqual(definition.code_configuration.dependency_resolution, "remote_build")
-        self.assertEqual(definition.code_configuration.entry_point, ["main.py"])
+        self.assertEqual(definition.code_configuration.entry_point, ["python", "main.py"])
         self.assertEqual(definition.environment_variables["AZURE_AI_MODEL_DEPLOYMENT_NAME"], "workshop-model")
 
     def test_wait_stops_when_active_and_raises_on_failure(self):
         client = self.ns["project_client"]
+        for creating, active, failed in (
+            ("creating", "active", "failed"),
+            (AgentVersionStatus.CREATING, AgentVersionStatus.ACTIVE, AgentVersionStatus.FAILED),
+        ):
+            with self.subTest(status_type=type(active).__name__):
+                self.ns["version"] = Mock(version="1")
+                client.agents.get_version.reset_mock()
+                client.agents.get_version.side_effect = [
+                    Mock(version="1", status=creating), Mock(version="1", status=active),
+                ]
+                exec(code_cell(HOSTED, "wait"), self.ns)
+                self.assertEqual(client.agents.get_version.call_count, 2)
+                client.agents.get_version.side_effect = [Mock(version="1", status=failed)]
+                with self.assertRaisesRegex(RuntimeError, "Build failed"):
+                    exec(code_cell(HOSTED, "wait"), self.ns)
+
+    def test_wait_times_out_if_version_remains_pending(self):
         self.ns["version"] = Mock(version="1")
-        client.agents.get_version.side_effect = [Mock(version="1", status="creating"), Mock(version="1", status="active")]
-        exec(code_cell(HOSTED, "wait"), self.ns)
-        self.assertEqual(client.agents.get_version.call_count, 2)
-        client.agents.get_version.side_effect = [Mock(version="1", status="failed")]
-        with self.assertRaises(RuntimeError):
+        self.ns["time"].time.side_effect = [0, 901]
+        self.ns["project_client"].agents.get_version.side_effect = [
+            Mock(version="1", status=AgentVersionStatus.CREATING),
+        ]
+        with self.assertRaisesRegex(TimeoutError, "Still not active"):
             exec(code_cell(HOSTED, "wait"), self.ns)
+        self.ns["time"].sleep.assert_not_called()
 
     def test_invoke_has_no_model_argument_and_cleanup_is_off_by_default(self):
         openai_client = MagicMock()

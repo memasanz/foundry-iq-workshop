@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup for notebook 12: creates the shared Foundry project connection that lets toolboxes call Azure AI Search knowledge bases as the agent.
+Optional shared Foundry project connection that lets toolboxes call Azure AI Search knowledge bases as the agent.
 
 .DESCRIPTION
 Creates one project connection (default 'iq-workshop-search-mcp') of kind remote-tool with the
@@ -9,8 +9,9 @@ Creates one project connection (default 'iq-workshop-search-mcp') of kind remote
 agent's own Entra identity. No secret is stored anywhere.
 
 Each toolbox tool carries its own server_url (the attendee's knowledge base), so ONE shared connection
-serves every attendee. Attendees cannot create project connections themselves; this is why it is a
-facilitator step.
+serves every attendee. Notebook 12 now creates its own prefixed connection directly in Python;
+this script is only needed for a separate shared-connection setup. The caller needs project
+connection-write permission.
 
 Requires the Azure Developer CLI (azd) with the Foundry agents extension:
   azd extension install azure.ai.agents
@@ -48,5 +49,5 @@ if ($PSCmdlet.ShouldProcess($projectEndpoint, "Create connection '$ConnectionNam
     Invoke-Azd ai connection create $ConnectionName --kind remote-tool --force `
         --target $target --auth-type agentic-identity `
         --audience https://search.azure.com --metadata 'ApiType=Azure'
-    Write-Host "Connection '$ConnectionName' is ready. Give attendees TOOLBOX_CONNECTION_NAME=$ConnectionName in .env."
+    Write-Host "Shared connection '$ConnectionName' is ready. Notebook 12 creates its own prefixed connection independently."
 }

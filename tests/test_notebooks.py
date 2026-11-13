@@ -129,7 +129,7 @@ class AttendeeAliasTests(unittest.TestCase):
             9: ("blob_source_name", "sharepoint_source_name", "webiq_source_name", "knowledge_base_name"),
             10: ("knowledge_base_name",),
             11: ("agent_name", "agent_folder"),
-            12: ("knowledge_base_name", "toolbox_name", "agent_name", "agent_folder"),
+            12: ("knowledge_base_name", "connection_name", "toolbox_name", "agent_name", "agent_folder"),
             14: ("webiq_source_name", "knowledge_base_name"),
         }
         for number, keys in objects.items():
@@ -159,7 +159,8 @@ class AttendeeAliasTests(unittest.TestCase):
                 self.assertEqual(kb["blob_index_name"], self.configure(4, alias)["index_name"])
                 self.assertEqual(kb["sharepoint_index_name"], self.configure(7, alias)["index_name"])
                 self.assertEqual(apim["webiq_source_name"], "iq-workshop-webiq")
-                self.assertEqual(hosted["connection_name"], "iq-workshop-search-mcp")
+                self.assertEqual(hosted["connection_name"], f"{alias}-iq-search-mcp")
+                self.assertEqual(hosted["connection_id"], f"{hosted['project_resource_id']}/connections/{alias}-iq-search-mcp")
 
     def test_toolbox_name_is_stable_and_prefixed_across_sessions(self):
         first = self.configure(3, "alice01")
