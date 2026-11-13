@@ -201,10 +201,11 @@ $settings.AZURE_STORAGE_ACCOUNT_NAME
 A successful deployment does not finish these manual steps:
 
 - Link the Web IQ billing resource in the [Web IQ portal](https://webiq.microsoft.ai/profiles),
-  create a workshop key, and arrange Auto beta enablement.
+  and create a workshop key.
 - Check [Prepare for the workshop](../PREPARE-FOR-WORKSHOP.md) for participant
   roles. Bicep grants the facilitator Foundry User on the project; the
-  parent-resource Foundry Owner access required by the agent labs is separate.
+  separate `scripts\grant-workshop-access.ps1` attendee setup grants Foundry Owner
+  on the parent Foundry resource for full-workshop connection, toolbox and agent authoring.
 - Verify public-network access is allowed by your organization's policies.
   Notebooks 04-05 need both your computer and Search to reach Blob Storage.
   Public networking does **not** mean anonymous Blob access: anonymous access

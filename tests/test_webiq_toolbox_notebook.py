@@ -141,33 +141,16 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "no final answer"):
             self.run_cell("verify")
 
-    def test_cleanup_is_opt_in_and_preserves_shared_webiq_connection(self):
-        self.create_toolbox()
+    def test_closing_clients_preserves_resources(self):
         self.ns["openai"] = Mock()
-        self.ns["conversation"] = SimpleNamespace(id="conversation-session")
-        self.ns["agent"] = SimpleNamespace(name="webiq-toolbox-agent-session", version="1")
-        self.run_cell("cleanup")
+        self.run_cell("close-clients")
         self.ns["requests"].delete.assert_not_called()
         self.project.toolboxes.delete.assert_not_called()
-        self.ns["requests"].delete.return_value = http_response(200, {})
-        self.run_cell(
-            "cleanup",
-            code_cell(NOTEBOOK, "cleanup").replace(
-                "DELETE_SESSION_RESOURCES = False", "DELETE_SESSION_RESOURCES = True",
-            ),
-        )
-        self.ns["openai"].conversations.delete.assert_called_once_with(
-            conversation_id="conversation-session",
-        )
-        self.project.agents.delete_version.assert_called_once_with(
-            agent_name="webiq-toolbox-agent-session", agent_version="1",
-        )
-        self.project.toolboxes.delete.assert_called_once_with("webiq-toolbox-session")
-        self.ns["requests"].delete.assert_called_once()
-        self.assertEqual(
-            self.ns["requests"].delete.call_args.args[0],
-            f"https://management.azure.com{self.ns['toolbox_connection_id']}?api-version=2025-10-01-preview",
-        )
+        self.project.agents.delete_version.assert_not_called()
+        self.ns["openai"].conversations.delete.assert_not_called()
+        self.ns["openai"].close.assert_called_once()
+        self.project.close.assert_called_once()
+        self.ns["credential"].close.assert_called_once()
 
 
 class WebIqToolboxApprovalTests(test_notebooks.AgentHelperTests):

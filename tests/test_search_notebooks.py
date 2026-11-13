@@ -22,7 +22,7 @@ SP_REMOTE = "08-sharepoint-remote.ipynb"
 
 
 def search_namespace():
-    return {
+    namespace = {
         "requests": Mock(),
         "json": json,
         "time": SimpleNamespace(sleep=Mock()),
@@ -59,6 +59,10 @@ def search_namespace():
         "quote": quote,
         "sample_files": list((ROOT / "data" / "search").glob("*.txt")),
     }
+    http = namespace["requests"]
+    http.request.side_effect = lambda method, url, **kwargs: getattr(http, method.lower())(url, **kwargs)
+    exec(code_cell(SP_INDEXED, "search-client"), namespace)
+    return namespace
 
 
 def run_cell(notebook, cell_id, ns, replacements=None):
@@ -499,25 +503,66 @@ class SearchCellTests(unittest.TestCase):
             run_cell(SP_INDEXED, "indexed-configuration", self.ns)
         self.http.put.assert_not_called()
 
-    def test_native_groups_use_managed_identity_client_id_and_exact_metadata_path(self):
+    def test_sharepoint_text_sections_preserve_entra_acls_and_embedding_contract(self):
         run_cell(SP_INDEXED, "create-index", self.ns)
         index = self.ns["index"]
         self.assertEqual(index["permissionFilterOption"], "enabled")
-        connector = index["sharePointConnectorAppRegistration"]
-        self.assertEqual(connector["applicationId"], self.ns["sp_app_client_id"])
-        self.assertEqual(connector["federatedCredentialId"], self.ns["sp_mi_client_id"])
+        self.assertNotIn("sharePointConnectorAppRegistration", index)
         fields = {field["name"]: field for field in index["fields"]}
-        self.assertTrue(fields["SharePointSiteUrl"]["sharepointSiteUrl"])
-        for name in ("UserIds", "GroupIds", "SharePointSiteUrl"):
+        self.assertNotIn("SharePointSiteUrl", fields)
+        for name, kind in (("UserIds", "userIds"), ("GroupIds", "groupIds")):
             self.assertFalse(fields[name]["retrievable"])
+            self.assertTrue(fields[name]["filterable"])
+            self.assertEqual(fields[name]["permissionFilter"], kind)
         run_cell(SP_INDEXED, "create-skillset", self.ns)
-        selector = self.ns["skillset"]["indexProjections"]["selectors"][0]
+        skillset = self.ns["skillset"]
+        extraction, embedding = skillset["skills"]
+        self.assertEqual(extraction["@odata.type"], "#Microsoft.Skills.Util.ContentUnderstandingSkill")
+        self.assertEqual(extraction["chunkingProperties"], {
+            "method": "semantic", "unit": "tokens", "maximumLength": 800, "overlapLength": 0,
+        })
+        self.assertEqual(extraction["extractionOptions"], ["locationMetadata"])
+        self.assertNotIn("modelDeployment", extraction)
+        self.assertEqual(extraction["inputs"], [{"name": "file_data", "source": "/document/file_data"}])
+        self.assertEqual(skillset["cognitiveServices"], {
+            "@odata.type": "#Microsoft.Azure.Search.AIServicesByIdentity",
+            "subdomainUrl": self.ns["foundry_endpoint"],
+        })
+        selector, = skillset["indexProjections"]["selectors"]
+        self.assertEqual(selector["sourceContext"], "/document/text_sections/*")
+        self.assertEqual(embedding["context"], selector["sourceContext"])
         mapping = {item["name"]: item["source"] for item in selector["mappings"]}
         self.assertEqual(mapping["UserIds"], "/document/metadata_user_ids")
         self.assertEqual(mapping["GroupIds"], "/document/metadata_group_ids")
-        self.assertEqual(mapping["SharePointSiteUrl"], "/document/metadata_spo_site_url")
+        self.assertEqual(mapping["content"], selector["sourceContext"] + "/content")
+        self.assertEqual(mapping["contentVector"], selector["sourceContext"] + "/content_vector")
+        self.assertEqual(embedding["inputs"], [{"name": "text", "source": mapping["content"]}])
+        self.assertEqual(embedding["dimensions"], fields["contentVector"]["dimensions"])
+        vectorizer, = index["vectorSearch"]["vectorizers"]
+        self.assertEqual(vectorizer["kind"], "azureOpenAI")
+        for key in ("resourceUri", "deploymentId", "modelName"):
+            self.assertEqual(embedding[key], vectorizer["azureOpenAIParameters"][key])
+        for name, source in (("page", "pageNumberFrom"), ("pageTo", "pageNumberTo")):
+            self.assertIn(name, fields)
+            self.assertEqual(mapping[name], selector["sourceContext"] + "/locationMetadata/" + source)
+        self.assertEqual(mapping["webUrl"], "/document/metadata_spo_item_weburi")
         self.assertNotIn("parent_id", mapping)
-        self.assertNotIn("chunk_id", mapping)
+        self.assertNotIn("id", mapping)
+
+    def test_sharepoint_rest_helper_handles_empty_success_and_explicit_missing_objects(self):
+        helper = self.ns["search_request"]
+        for status in (202, 204):
+            response = http_response(status, {})
+            response.json.side_effect = AssertionError("Empty responses must not be decoded")
+            self.http.post.return_value = response
+            self.assertEqual(helper("POST", "indexers/example/run"), {})
+        self.http.get.return_value = http_response(404, {})
+        self.assertIsNone(helper("GET", "indexers/example/status", allow_not_found=True))
+        with self.assertRaises(requests.HTTPError):
+            helper("GET", "indexers/example/status")
+        self.http.get.return_value = http_response(403, {})
+        with self.assertRaises(requests.HTTPError):
+            helper("GET", "indexers/example/status", allow_not_found=True)
 
     def test_sharepoint_acl_source_path_is_present_on_every_chunk(self):
         run_cell(SP_INDEXED, "create-index", self.ns)
@@ -539,6 +584,10 @@ class SearchCellTests(unittest.TestCase):
                 self.assertEqual(indexer["skillsetName"], self.ns["skillset_name"])
                 self.assertEqual(indexer["parameters"]["maxFailedItems"], 0)
                 self.assertEqual(indexer["parameters"]["maxFailedItemsPerBatch"], 0)
+                if notebook == SP_INDEXED:
+                    configuration = indexer["parameters"]["configuration"]
+                    self.assertTrue(configuration["allowSkillsetToReadFileData"])
+                    self.assertNotIn("imageAction", configuration)
 
     def test_indexer_creation_and_update_do_not_confuse_old_run_with_new_run(self):
         for notebook in (BLOB, CU, SP_INDEXED):
@@ -635,6 +684,8 @@ class SearchCellTests(unittest.TestCase):
             self.assertEqual(headers["Authorization"], "Bearer search-user-token")
             self.assertEqual(headers["x-ms-query-source-authorization"], "search-user-token")
             self.assertNotIn("x-ms-enable-elevated-read", headers)
+            if notebook == SP_INDEXED:
+                self.assertEqual(self.http.post.call_args.kwargs["json"]["search"], "*")
 
     def test_remote_path_has_no_ingestion_app_or_model_dependency(self):
         for name in ("sp_app_client_id", "sp_mi_client_id"):
@@ -668,6 +719,28 @@ class SearchCellTests(unittest.TestCase):
             self.http.post.return_value = http_response(status, body)
             with self.assertRaisesRegex(RuntimeError, "partial or a source failed"):
                 run_cell(SP_REMOTE, "query-remote", self.ns)
+
+    def test_remote_gateway_errors_show_upstream_details_without_masking_failure(self):
+        for body in (
+            json.dumps({"error": {"message": "Copilot retrieval call failed: BadGateway"}}),
+            "<html>Bad Gateway</html>",
+        ):
+            with self.subTest(body=body):
+                response = http_response(502, {}, {
+                    "request-id": "retrieval-request-id", "Date": "Fri, 13 Nov 2026 06:00:00 GMT",
+                })
+                response.text = body
+                self.http.post.reset_mock()
+                self.http.post.return_value = response
+                with patch("builtins.print") as output:
+                    with self.assertRaises(requests.HTTPError):
+                        exec(code_cell(SP_REMOTE, "query-remote"), self.ns)
+                printed = " ".join(str(call) for call in output.call_args_list)
+                self.assertIn(body, printed)
+                self.assertIn("retrieval-request-id", printed)
+                self.assertIn("Fri, 13 Nov 2026 06:00:00 GMT", printed)
+                response.json.assert_not_called()
+                self.http.post.assert_called_once()
 
     def test_destructive_and_admin_cells_are_disabled_by_default(self):
         for notebook, cell_id in [
@@ -741,10 +814,6 @@ class SearchCellTests(unittest.TestCase):
             {"resourceAppId": "00000003-0000-0000-c000-000000000000", "resourceAccess": [
                 {"id": "Files.Read.All-id", "type": "Role"},
                 {"id": "Sites.Selected-id", "type": "Role"},
-            ]},
-            {"resourceAppId": "00000003-0000-0ff1-ce00-000000000000", "resourceAccess": [
-                {"id": "Sites.Selected-id", "type": "Role"},
-                {"id": "User.Read.All-id", "type": "Role"},
             ]},
         ])
         self.assertNotIn("passwordCredentials", app_body)

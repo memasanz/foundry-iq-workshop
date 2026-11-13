@@ -41,6 +41,10 @@ foreach ($scope in @($searchScope, $projectScope, $storageScope)) {
         throw "Resource scope is outside the configured workshop resource group: $scope"
     }
 }
+if ($projectScope -notmatch '^(.+/providers/Microsoft\.CognitiveServices/accounts/[^/]+)/projects/[^/]+$') {
+    throw 'AZURE_AI_PROJECT_RESOURCE_ID must identify a Foundry project under a Microsoft.CognitiveServices account.'
+}
+$foundryScope = $Matches[1]
 $context = Invoke-Az account show --subscription $subscriptionId --output json | ConvertFrom-Json
 if ($context.tenantId -ne $settings.AZURE_TENANT_ID) {
     throw 'Subscription tenant does not match the deployment settings. Check the environment file and Azure login.'
@@ -64,7 +68,7 @@ $grants = @(
     @{ Role = 'Search Service Contributor'; Id = '7ca78c08-252a-4471-8644-bb5ff32d4ba0'; Scope = $searchScope },
     @{ Role = 'Search Index Data Contributor'; Id = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'; Scope = $searchScope },
     @{ Role = 'Storage Blob Data Contributor'; Id = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'; Scope = $containerScope },
-    @{ Role = 'Foundry User'; Id = '53ca6127-db72-4b80-b1b0-d745d6d5456d'; Scope = $projectScope }
+    @{ Role = 'Foundry Owner'; Id = 'c883944f-8b7b-4483-af10-35834be79c4a'; Scope = $foundryScope }
 )
 # Reader lets attendees open the Web IQ resource in the portal to create their own profile API key.
 if ($settings.WEBIQ_RESOURCE_ID -and $settings.WEBIQ_RESOURCE_ID.StartsWith("$groupScope/providers/", [StringComparison]::OrdinalIgnoreCase)) {
@@ -77,7 +81,7 @@ foreach ($scope in ($grants | ForEach-Object { $_.Scope } | Select-Object -Uniqu
 }
 
 Write-Host "Subscription: $($context.name) | Workshop: $($settings.AZURE_RESOURCE_GROUP)"
-Write-Warning 'Attendees share Search objects and blob contents. Search Service Contributor also allows service administration. Use only trusted attendees and non-sensitive workshop data.'
+Write-Warning 'Attendees share Search objects and blob contents. Search Service Contributor allows service administration. Foundry Owner grants broad access to the shared Foundry account and its projects, including model/connection management and limited role delegation. Use only trusted attendees and non-sensitive workshop data.'
 
 $results = @()
 foreach ($participant in $participants.Values) {

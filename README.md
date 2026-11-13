@@ -38,8 +38,8 @@ Start with **01 -> 02 -> 03**. Allow roughly 2-3 hours, including setup and disc
 
 | Notebook | Time | What you will do |
 |---|---|---|
-| [01 - Web IQ APIs](notebooks/01-web-iq-apis.ipynb) | 40-55 min | Try Web Search, Browse, News, Images, Videos and Auto; inspect sources and citations. Places is optional. |
-| [02 - Foundry agent + Web IQ](notebooks/02-foundry-web-iq-agent.ipynb) | 35 min | Give an agent access to the same Web IQ service through MCP, approve tool calls, and inspect its answers. |
+| [01 - Web IQ APIs](notebooks/01-web-iq-apis.ipynb) | 40-55 min | Try Web Search, Browse, News, Images and Videos; inspect results and source attribution. |
+| [02 - Foundry agent + Web IQ](notebooks/02-foundry-web-iq-agent.ipynb) | 35 min | Create or update a Web IQ agent, run searches without approval prompts, and inspect its answers. |
 | [03 - Foundry agent + Web IQ toolbox](notebooks/03-foundry-web-iq-toolbox.ipynb) | 30-40 min | Reuse notebook 02's connection through a toolbox: a reusable collection of tools for agents. |
 
 ### Track 2: Your documents and Foundry IQ
@@ -51,12 +51,13 @@ Compare **04, 05 and 06**: text splitting in an indexer, PDF extraction/chunking
 | [04 - Blob indexer and skills](notebooks/04-blob-indexer-skills.ipynb) | 45-60 min | Let Search read Blob files, split text and generate embeddings. Compare keyword, vector, hybrid and semantic-ranked search. |
 | [05 - Blob + Content Understanding](notebooks/05-blob-content-understanding.ipynb) | 45-60 min | Extract an original two-page PDF as Markdown, chunk and embed it, then retrieve evidence with page ranges. Uses a separate index and billable Content Understanding. |
 | [06 - Chunk, embed and push](notebooks/06-push-chunks-vectors.ipynb) | 35-45 min | Do chunking and embedding in Python, then upload to a separate index. Can run without notebook 04 or Blob access. |
-| [07 - SharePoint indexed](notebooks/07-sharepoint-indexed.ipynb) | 60-90 min | Copy test-site content into Search while preserving document permissions. Requires facilitator app/consent/site setup. |
+| [07 - SharePoint indexed](notebooks/07-sharepoint-indexed.ipynb) | 60-90 min | Use Content Understanding semantic text chunks, embeddings and Entra ACL projections, following the text-only setup-index sample. Requires app/consent/site setup; no Vision components. |
 | [08 - SharePoint remote](notebooks/08-sharepoint-remote.ipynb) | 20-30 min | Retrieve from SharePoint without copying content into an index. Requires Microsoft 365 Copilot licensing or enabled Retrieval API billing. |
-| [09 - Foundry IQ knowledge base](notebooks/09-foundry-iq-knowledge-base.ipynb) | 45-60 min | Bring Blob, SharePoint and Web IQ together and ask internal, web and mixed questions. Choose indexed or remote SharePoint. |
+| [09 - Foundry IQ knowledge base](notebooks/09-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine the existing Blob and indexed SharePoint indexes with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
 | [10 - Foundry IQ through APIM](notebooks/10-foundry-iq-apim.ipynb) | 30-40 min | Build on notebook 09 using an existing API Management gateway that validates callers and protects the Web IQ key. |
 | [11 - Hosted agent](notebooks/11-hosted-agent.ipynb) | 20-30 min | Deploy a small code-based agent to Foundry, without Docker. Needs Foundry and the chat model, not notebooks 09-10. |
 | [12 - Hosted agent + Foundry IQ toolbox](notebooks/12-foundry-iq-toolbox-agent.ipynb) | 30-40 min | Combine the patterns from 09 and 11. Uses Blob content, a shared toolbox connection and a per-agent Search role. |
+| [14 - Foundry IQ with Web IQ only](notebooks/14-foundry-iq-webiq-only.ipynb) | 15-25 min | Create a standalone Web IQ-only knowledge base, without APIM or indexes. Inspect MCP activity, URLs and passages; compare answer synthesis with extractive retrieval. Does not require 09 or 10. |
 
 **Optional extension:** [13 - Web IQ authentication](notebooks/13-web-iq-authentication.ipynb) (25-35 min) explores Entra tokens and managed identities instead of API keys. It is independent of the Search labs and needs a separate caller app/profile binding. Managed-identity exercises require Azure compute exposing that identity; the local exercise uses a hidden secret prompt.
 
@@ -66,12 +67,13 @@ The full resource and permission matrix is in [Prepare for the workshop](PREPARE
 
 | Labs | What must be ready |
 |---|---|
-| 01-03 | A paid Azure subscription, a deployed Web IQ resource, a linked profile/API key, and Auto beta approval. Participants in 02-03 need **Foundry Owner on the parent Foundry resource**. |
+| 01-03 | A paid Azure subscription, a deployed Web IQ resource, and a linked profile/API key. Workshop onboarding grants participants **Foundry Owner on the parent Foundry resource** for connection, agent and toolbox authoring. Notebook 02 also documents its narrower sufficient role. |
 | 04-06 | Search, the embedding deployment and inference access. Notebooks 04-05 also need authenticated network access to Blob Storage. Notebook 06 needs account-level embedding permission; project-only Foundry User is insufficient. |
-| 05 | A Content Understanding-supported Foundry region (East US recommended), **Cognitive Services User for Search's identity on Foundry**, and budget for PDF analysis and embeddings. Bicep already declares this role. |
+| 05, 07 | A Content Understanding-supported Foundry region (East US recommended), **Cognitive Services User for Search's identity on Foundry**, and budget for document analysis and embeddings. Bicep already declares this role. |
 | 07 | SharePoint indexer preview registration, one shared Entra ingestion app, **tenant admin consent**, and an explicit test-site grant. Graph `Files.Read.All` is tenant-wide file-read access; obtain approval before class. |
 | 08 | **Microsoft 365 Copilot add-on license for each querying user**, or explicitly enabled Retrieval API pay-as-you-go. Pay-as-you-go requires at least one Copilot license in the tenant. GitHub Copilot is not a substitute. |
 | 10 | An **existing APIM service**, its managed-identity Search access, and the separate broker app/policy setup below. Bicep does not create APIM. |
+| 14 | Existing Search and chat deployment, Search authoring/query access, Search identity's model access, and `WEBIQ_API_KEY`. The separate Web IQ source stores its key for direct notebook and portal queries. No document ingestion or APIM setup is required. |
 | 03, 11-12 | Verify toolbox/hosted-agent preview availability in your project and region. Successful infrastructure deployment does not prove these notebook flows work end to end. |
 
 Use only a dedicated SharePoint test site and non-sensitive documents. Never weaken tenant security policies to make an exercise work.
@@ -337,7 +339,9 @@ Bootstrap attempts cleanup in `finally` on success or failure: it revokes only t
 
 The [Search ACL permission matrix](https://learn.microsoft.com/azure/search/search-indexer-sharepoint-access-control-lists#permissions-by-acl-scenario) documents `Sites.Selected` and an explicit site grant, but does not specify the minimum site-grant role for every ACL scenario. This script uses **Read**; verify ACL extraction and two-user query behavior rather than assuming that a successful content-ingestion run proves ACL support. Do not automatically escalate to FullControl. Caveat: Graph `Files.Read.All` remains tenant-wide read, so this is not strict site-only isolation. Use a test tenant or non-sensitive content. The notebook's own app-creation and federation-check cells stay disabled by default; this script replaces them for facilitators.
 
-Before class, use two non-admin member users to test an allowed and a restricted document, including native SharePoint-group membership. An empty query alone does not prove permissions are correct. Inherited ACL changes need a permissions resync and an indexer run. Review the notebook's preview limitations, including guest users, nested groups and Conditional Access compatibility.
+Notebook 07 follows the [setup-index reference](https://github.com/memasanz/foundry-iq-sharepoint-indexer/blob/main/notebooks/01_setup_index.ipynb), keeping Content Understanding semantic text sections, embeddings, source/page metadata and Entra ACL projections, but omitting all Vision/image processing. Its separate `{prefix}-nb7-*` objects leave older `{prefix}-sp-*` resources unchanged. The shared app setup script still provisions optional native-group API permissions; notebook 07 only uses the Graph document-library ACL path and does not resolve native SharePoint groups.
+
+Before class, use two non-admin member users to test an allowed and a restricted document through direct user access and an Entra group assigned directly to the document. Remove direct user access before a group-only test. Start with `*` so keyword mismatch does not obscure permission checks. Browser access through site ownership, special owners claims or nested SharePoint groups is not proof of an equivalent supported Search access path. Inherited ACL changes need a permissions resync and an indexer run. Review the preview limitations, including guest users, nested groups and Conditional Access compatibility.
 
 **Using notebook 08 instead?** Skip this ingestion app setup. Queries run as each signed-in user and require their Microsoft 365 Copilot license or explicitly enabled Retrieval API pay-as-you-go. This billing is separate from Search/Foundry. Verify the documents are available in Microsoft 365 search before class.
 
@@ -346,7 +350,7 @@ Before class, use two non-admin member users to test an allowed and a restricted
 1. Open [Profile Management](https://webiq.microsoft.ai/profiles), sign in, and link the `WEBIQ_RESOURCE_ID` from `.env.azure`.
 2. Create an API key. This portal step is **not automated by the Azure resource deployment**.
 3. Set `WEBIQ_API_KEY` in your untracked `.env`, or use the notebooks' hidden password prompt. Local setup below creates `.env` without overwriting an existing file. Never put credentials directly in a notebook cell.
-4. Confirm your profile's allowed service list. Notebook 01 runs Web Search, Browse, News, Images, Videos and Auto by default. Auto beta requires service-side AppID enablement; request access before the workshop. Full-document formats and Places beta may also require additional access. Places remains optional (`WEBIQ_ENABLE_PLACES=true`). To skip a core exercise deliberately, set its `WEBIQ_ENABLE_*` flag to `false`; remove old `false` settings from an existing `.env` to restore the defaults, then restart the kernel. These flags only control which exercises run; they do not grant access or require additional Azure resources. API permission errors remain visible.
+4. Notebook 01 calls Web Search, Browse, News, Images and Videos directly with the profile API key. There are no notebook-level service switches; API permission errors remain visible.
 
 Web IQ API keys are not Azure Cognitive Services keys and are not retrieved with `az cognitiveservices account keys list`. Production Web IQ Entra authentication uses an **app-only** token and a client ID bound to the Web IQ profile; `az login` alone does not authenticate a Web IQ REST call. The notebooks use a Web IQ API key and Entra credentials for Foundry.
 
@@ -447,14 +451,14 @@ The script reads resource IDs from `.env.azure`, validates that the scopes belon
 | Search Service Contributor | Workshop Search service | Create/manage indexes, indexers, data sources, skillsets and other Search objects |
 | Search Index Data Contributor | Workshop Search service | Upload, update and delete documents; run queries |
 | Storage Blob Data Contributor | `workshop-documents` container only | Upload, read and delete source documents |
-| Foundry User | Workshop Foundry project | Create and use agents in that project |
+| Foundry Owner | Parent workshop Foundry resource (inherited by its projects) | Create/manage connections, toolboxes and agents; account-level model management and inference |
 | Reader | Web IQ resource (only if `WEBIQ_RESOURCE_ID` is in `.env.azure`) | View the resource in the portal; read-only |
 
-**Additional grants are still required:** notebooks 02-03 use **Foundry Owner on the parent Foundry resource** for each participant. Notebook 06 needs account-level Cognitive Services OpenAI User or the workshop's Foundry Owner role; project-only Foundry User is not enough. This script does not add those parent-resource roles.
+**Foundry authoring is included:** the script grants **Foundry Owner on the parent Foundry resource**, so every attendee can create their own connections, toolboxes and agents. This also covers notebook 06's direct account-level embedding calls. It replaces the script's former project-only Foundry User grant; rerun it for existing attendees to add Foundry Owner. Existing Foundry User assignments are not revoked. Notebook 02's narrower Foundry Project Manager role is sufficient for that lab, but this script deliberately uses the broader role for the full workshop.
 
-These roles do not grant subscription/resource-group Contributor, Owner, role-assignment management, SharePoint access or write access to Web IQ. Web IQ API access uses a separate profile key.
+These roles do not grant subscription/resource-group Contributor or Owner, SharePoint access or write access to Web IQ. Foundry Owner does include limited role-delegation permissions within the Foundry resource; it does not grant role-assignment management on Search or other services. Web IQ API access uses a separate profile key.
 
-**Shared-service warning:** participants can modify one another's Search objects and access shared index/blob content. A unique prefix prevents name collisions, **not access isolation**. Use trusted attendees and non-sensitive data; separate services/containers if strict isolation is required. Check Search object limits and capacity for the class size, and allow several minutes for role propagation.
+**Shared-service warning:** participants can modify one another's Search objects and access shared index/blob content. Foundry Owner also permits changes to shared models, connections and projects, including access to connection credentials. A unique prefix prevents name collisions, **not access isolation**. Use trusted attendees and non-sensitive data; separate resources if strict isolation is required. Check Search object limits and capacity for the class size, and allow several minutes for role propagation.
 
 ## 7. Open the notebooks
 
@@ -486,17 +490,46 @@ All labs use the same local environment. Edit `.env` only for the labs you plan 
 
 | Setting | When you need it |
 |---|---|
-| `WEBIQ_API_KEY` | Web IQ calls/connections; notebook 09 also needs it for retrieval. Use your workshop-only key. |
+| `WEBIQ_API_KEY` | Web IQ calls/connections; notebook 09 stores it in its Web IQ knowledge source for portal/notebook retrieval. Use a workshop-only key. |
 | `WORKSHOP_PREFIX` | Your attendee alias throughout the workshop, such as `alice01` (3-20 lowercase letters/digits, starting with a letter). Keep the same value between notebooks. |
-| `SHAREPOINT_SITE_URL` | SharePoint labs and notebook 09; use the approved test site. |
+| `SHAREPOINT_SITE_URL` | SharePoint ingestion/remote labs (07-08); 09 references the existing index instead. |
 | Three `SHAREPOINT_*` app/identity IDs | Indexed SharePoint only; supplied after facilitator setup. Notebook 08 does not need them. |
 | `APIM_RESOURCE_ID` | Facilitator setup for notebook 10's existing gateway. Participants receive the printed `APIM_GATEWAY_URL`, `BROKER_APP_CLIENT_ID` and `WEBIQ_APIM_SOURCE_NAME`. |
 
 Every notebook starts with its required participant permissions and facilitator/service-identity prerequisites. Use your alias for all attendee-created top-level objects: connections, agents, toolboxes, indexes, data sources, skillsets, indexers, knowledge sources/bases, Blob folders and generated-agent folders. Notebooks 01 and 13 only make requests and create no named resources. Fields/tool labels inside your objects and service-generated IDs stay unchanged. Shared Azure services, models, the ingestion app, notebook 10's Web IQ source and notebook 12's facilitator connection remain shared. **Aliases prevent naming collisions, not provide security isolation**; the workshop's Search roles can still access other attendees' objects.
 
-Notebook 02 stores the workshop Web IQ key in your `{prefix}-webiq-mcp` Foundry connection; sufficiently privileged project members can access it. Notebook 03 reuses your connection with the same alias. Remove an old `WEBIQ_CONNECTION_NAME=webiq-mcp` override, or replace it with an alias-prefixed name in both labs. Use a workshop-only key and rotate/revoke it afterward. Keep your connection until both labs are finished.
+Notebook 02 stores the workshop Web IQ key in the `{prefix}-webiq-mcp` Foundry connection; sufficiently privileged project members can access it. Notebooks 02 and 03 derive the connection name from `WORKSHOP_PREFIX`, so keep the same prefix in both. Use a workshop-only key and rotate/revoke it afterward. Keep the connection until both labs are finished.
+
+Notebook 02 reuses a matching `{prefix}-webiq-agent` or older `{prefix}-webiq-agent-<session>` and creates a new version on each run. With no matching agent, it creates the stable `{prefix}-webiq-agent` name. It automatically permits the allowlisted `web` tool, requires `WEBIQ_API_KEY` and `WORKSHOP_PREFIX` in configuration rather than prompting, and retains its resources. Queries must remain public and non-sensitive. Notebook 03 still demonstrates interactive approvals.
+
+Notebook 03 publishes versions under the stable `{prefix}-webiq-toolbox` name. Its agents and version-pinned toolbox connections have prefix-based session names, and all resources are retained when local clients close.
+
+### Use notebook 09's knowledge base in the Foundry IQ portal
+
+1. Put the workshop `WEBIQ_API_KEY` in local `.env`; never paste the key into chat or commit it.
+2. Run notebook 09's **Configuration** and **Web IQ knowledge source** (`create-webiq-source`) cells. The source PUT stores the key under `mcpServerParameters.authentication`, using `kind: storedHeaders` and `headers: { "x-apikey": ... }` inside `storedHeadersParameters`. On a first run, also complete the notebook through **Create the knowledge base**.
+3. Open the existing `{prefix}-kb` in the Foundry IQ portal, refresh it, and start a new chat. No index rebuild or knowledge-base recreation is needed when updating source authentication.
+4. Ask **What is the latest stable release of Python, and when was it released?** Confirm Web IQ activity and references, then try the notebook's Blob/web comparison.
+
+The key is stored on the **Azure AI Search knowledge source**, not in the portal chat. Search masks stored headers on readback and supplies `x-apikey` during MCP discovery and tool calls. The portal does not send the notebook's former custom authentication headers: without stored source authentication, discovery fails with **401 `auth_missing_token`**. Inspect the retrieval activity/error rather than relying on a model's claim that it cannot browse.
+
+Use a workshop-only key. Authorized callers share its quota/billing; restrict source-authoring permissions and rotate/revoke it afterward. The shared Web IQ key does not bypass the signed-in user's SharePoint ACLs. To rotate it, update `.env` and rerun Configuration plus `create-webiq-source`. See [MCP knowledge-source authentication](https://learn.microsoft.com/azure/search/agentic-knowledge-source-how-to-mcp-server#authentication-options).
 
 **You are ready when** you can select the kernel, sign in to the correct tenant and run the first configuration cell of your chosen notebook without missing-setting errors. Later service calls also require the permissions and approvals in the preparation checklist.
+
+### Verify notebooks from a Python script
+
+Run the actual notebook cells without opening Jupyter:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\run-notebooks.py .\notebooks\01-web-iq-apis.ipynb
+```
+
+Pass additional notebook paths to run them in the specified order. Each notebook gets a fresh kernel using the same Python environment as the script, with the repository root as its working directory. Top-level `await` works just as it does in Jupyter. The runner stops at the first failure and returns a nonzero exit code.
+
+**These are live runs, not mocked tests:** cells make service calls, incur charges, and create or delete resources according to the notebook's configuration. Prepare `.env`, `.env.azure`, credentials and required permissions first; interactive password prompts are not supported. Notebook opt-in flags retain their existing defaults, so a passing run does not verify disabled branches. Image previews are saved but their browser rendering is not verified.
+
+Original notebooks are unchanged. Executed copies, including partial outputs and errors from failed runs, are saved under the git-ignored `.deployment\notebook-runs` folder. Open those copies to inspect results; treat them as potentially sensitive. Use `--timeout 600` to allow ten minutes per cell, or `--output-dir PATH` to choose another output folder.
 
 ## Costs and responsible use
 
@@ -506,7 +539,7 @@ Notebook 02 stores the workshop Web IQ key in your `{prefix}-webiq-mcp` Foundry 
 |---|---|
 | Search | One S1 replica/partition, retrieval usage and semantic-ranking allowances. This is a workshop setup, not production high availability. |
 | Foundry models | Chat and embedding calls; agents can make several tool/model calls for one prompt. Model capacity is not a spending cap. |
-| Web IQ | Search/Browse calls, retries, optional exercises and applicable beta/premium terms. Check [current pricing](https://learn.microsoft.com/web-iq/resources/pricing), including Auto and Places terms. |
+| Web IQ | Search/Browse calls and retries. Check [current pricing](https://learn.microsoft.com/web-iq/resources/pricing). |
 | Content Understanding (05) | PDF analysis on the attached Foundry resource, plus embeddings. Reprocessing can incur analysis charges again; timeouts can still be billable. See [skillset billing](https://learn.microsoft.com/azure/search/cognitive-search-attach-cognitive-services). |
 | Storage | Stored data, transactions and data retained by seven-day Blob/container soft deletion. |
 | SharePoint remote | Required Microsoft 365 licensing or enabled Retrieval API pay-as-you-go, plus applicable Search charges. Minimal reasoning does not make retrieval free. |
@@ -533,11 +566,11 @@ Use only public, non-sensitive queries. Retrieved pages are untrusted evidence, 
 | SharePoint 07 authorization fails | Check admin consent, the explicit site grant, required API permissions and federation to the current Search identity. Subscription Owner is not tenant admin consent. |
 | SharePoint 08 license/billing error | Check each querying user's Microsoft 365 Copilot license or enabled Retrieval API pay-as-you-go; GitHub Copilot does not qualify. |
 | Model deployment fails | Check supported versions/SKUs and remaining regional quota, then re-run with valid `-ModelName`, `-ModelVersion`, and `-ModelCapacity`. |
-| MCP approval keeps appearing | The agent intentionally requires approval for every call. Review tool arguments and approve only expected public searches. |
+| MCP approval keeps appearing | Notebook 03 intentionally requires approval for every call. Notebook 02 runs `web` without prompts; rerun its agent-creation cell to apply the updated configuration and start a fresh conversation. |
 
 ## Cleanup
 
-**Participants:** use your notebook's opt-in cleanup cells when finished. They remove that lab's named objects, not shared Azure services. Notebook 06 removes only its push index; it does not delete notebook 04's index. Keep shared connections until everyone is done.
+**Participants:** use your notebook's opt-in cleanup cells when available. They remove that lab's named objects, not shared Azure services. Notebooks 02-03 retain agents, versions, toolboxes, conversations and connections; remove them manually in Foundry when no longer needed. Notebook 06 removes only its push index; it does not delete notebook 04's index. Keep shared connections until everyone is done.
 
 **Facilitators:** to stop charges for the dedicated workshop resources, intentionally delete the resource group. This removes **everything in that group**, including models, connection secrets, Search, Storage and the Web IQ account:
 
@@ -559,7 +592,7 @@ SharePoint app registrations, enterprise applications, consent, federated creden
 - **04 and 06:** use the original synthetic TXT documents in `data/search`, `text-embedding-3-small` with 1,536 dimensions, and semantic ranking. Notebook 04 uses Text Split and Shaper; its logical "pages" are text chunks, not physical page citations. Notebook 06 generates document embeddings locally; Search generates query embeddings. Text Split/Shaper do not require billable AI enrichment, but embeddings and other service usage can incur charges.
 - **05:** uses the original two-page `travel-handbook.pdf`, the stable `2026-04-01` Search API and keyless Content Understanding attachment. Content Understanding extracts Markdown and chunks it; there is no additional Text Split skill. Page ranges and embeddings are projected to a separate index. Budget for analysis from the first PDF, including possible timeout charges; preview image descriptions and semantic chunking are not enabled.
 - **07-08:** do not need an embedding model. Indexed SharePoint copies content and permissions into Search; remote retrieval leaves content in SharePoint and evaluates the signed-in user's access. Notebook 08 uses minimal reasoning and an extractive response without Foundry model calls.
-- **09:** requires the deployed embedding model and Search-to-Foundry role. Web IQ is an `mcpServer` knowledge source, not the built-in Bing-based `web` source. The Web IQ key travels in per-request control headers rather than being stored in Search. MCP sources do not support `minimal` reasoning or `alwaysQuerySource`; the notebook bounds retrieval time.
+- **09:** requires notebook 04's Blob index (or 05's, selected in the configuration cell), notebook 07's SharePoint index, and the Search-to-Foundry role for the chat model and existing vectorizers. Both indexes are referenced through `searchIndex` knowledge sources; no uploads, indexes or ingestion pipelines are created. Notebook 08 and Copilot licensing are not required. Web IQ is an `mcpServer` knowledge source using only basic `web` search with passage-format guidance, not the built-in Bing-based `web` source or Web IQ Auto. Its workshop key is stored in the knowledge source's `storedHeaders` authentication so notebook and Foundry IQ portal retrieval both work. Authorized callers share that key's quota/billing; restrict source-authoring access and rotate/revoke the key afterward. Search masks it on readback. Notebook 10 uses a separate APIM-held key pattern. MCP sources do not support `minimal` reasoning or `alwaysQuerySource`; the notebook bounds retrieval time.
 - **11-12:** hosted agents are preview features. Notebook 11's agent packages are installed remotely by Foundry. Notebook 12 uses **Blob only**: the agent's identity does not provide per-user SharePoint authorization or forward a caller's Web IQ key. Notebook 10 covers that gateway pattern.
 - **Validation:** local tests mock service responses and check notebook structure/request handling. Successful resource deployment and authenticated connectivity are not full live notebook validation. Before class, test ingestion, embeddings and queries; toolbox availability and both authentication hops in 03; retrieval response/ACL behavior in 09; hosted-agent region availability in 11; and the connection target, MCP path and toolbox promotion in 12. Notebook 13's live authorization also depends on the bound caller/profile.
 
@@ -571,8 +604,6 @@ SharePoint app registrations, enterprise applications, consent, federated creden
 - [Web IQ Azure deployment](https://learn.microsoft.com/web-iq/get-started/deploy-azure-cli)
 - [Web IQ authentication](https://learn.microsoft.com/web-iq/get-started/authentication)
 - [Web IQ MCP tools](https://learn.microsoft.com/web-iq/integrations/mcp)
-- [Web IQ Places API (Beta)](https://learn.microsoft.com/web-iq/reference/places)
-- [Web IQ Auto API (Beta)](https://learn.microsoft.com/web-iq/reference/auto)
 - [Foundry MCP tools](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/model-context-protocol)
 - [Foundry MCP authentication](https://learn.microsoft.com/azure/foundry/agents/how-to/mcp-authentication)
 - [Blob indexer](https://learn.microsoft.com/azure/search/search-how-to-index-azure-blob-storage)

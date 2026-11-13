@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import re
 import unittest
 import xml.etree.ElementTree as ET
@@ -59,6 +60,32 @@ class ApimNotebookTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             run("inspect-token", self.ns)
 
+    def test_broker_token_requests_resource_uri_without_permission_suffix(self):
+        settings = {
+            "AZURE_TENANT_ID": "11111111-1111-1111-1111-111111111111",
+            "AZURE_SEARCH_ENDPOINT": self.ns["search_endpoint"],
+            "BROKER_APP_CLIENT_ID": BROKER_ID,
+            "APIM_GATEWAY_URL": self.ns["apim_url"],
+            "WORKSHOP_PREFIX": "alice01",
+        }
+        token = make_token({"aud": BROKER_ID, "scp": "user_impersonation"})
+        with (
+            patch.dict(os.environ, settings, clear=True),
+            patch("dotenv.load_dotenv"),
+            patch("pathlib.Path.cwd", return_value=ROOT),
+            patch("azure.identity._credentials.azure_cli._run_command",
+                  return_value=json.dumps({"accessToken": token, "expires_on": 4102444800})) as cli,
+        ):
+            run("configuration", self.ns)
+            run("inspect-token", self.ns)
+        arguments = cli.call_args.args[0]
+        self.assertEqual(arguments[arguments.index("--resource") + 1], f"api://{BROKER_ID}")
+
+    def test_token_cell_rejects_missing_delegated_scope(self):
+        self.ns["broker_token"] = lambda: make_token({"aud": BROKER_ID, "scp": "User.Read"})
+        with self.assertRaisesRegex(RuntimeError, "missing user_impersonation"):
+            run("inspect-token", self.ns)
+
     def test_shared_webiq_source_is_read_without_modification(self):
         self.http.get.return_value = http_response(200, {
             "kind": "mcpServer",
@@ -70,7 +97,7 @@ class ApimNotebookTests(unittest.TestCase):
         self.http.post.assert_not_called()
         self.http.delete.assert_not_called()
 
-    def test_missing_or_incorrect_shared_source_requires_facilitator_setup(self):
+    def test_missing_or_incorrect_shared_source_requires_gateway_setup(self):
         for status, body in (
             (404, {}),
             (200, {"kind": "azureBlob"}),
@@ -78,14 +105,17 @@ class ApimNotebookTests(unittest.TestCase):
         ):
             with self.subTest(status=status, source=body):
                 self.http.get.return_value = http_response(status, body)
-                with self.assertRaisesRegex(RuntimeError, "facilitator"):
+                with self.assertRaisesRegex(RuntimeError, "setup"):
                     run("create-webiq-source", self.ns)
                 self.http.put.assert_not_called()
 
     def test_knowledge_base_reuses_notebook_08_sources(self):
         def get(url, **kwargs):
             if "/knowledgebases/" in url:
-                return http_response(200, {"models": [{"kind": "azureOpenAI"}], "answerInstructions": "x"})
+                return http_response(200, {
+                    "models": [{"kind": "azureOpenAI"}], "answerInstructions": "x",
+                    "retrievalInstructions": "Use alice01-kb-webiq with contentFormat passage.",
+                })
             kind = "azureBlob" if "kb-blob" in url else "indexedSharePoint"
             return http_response(200, {"kind": kind})
         self.http.get.side_effect = get
@@ -95,6 +125,26 @@ class ApimNotebookTests(unittest.TestCase):
         self.assertEqual([s["name"] for s in body["knowledgeSources"]],
                          ["alice01-kb-blob", "alice01-kb-sharepoint", "iq-workshop-webiq"])
         self.assertEqual(self.ns["source_kinds"]["alice01-kb-sharepoint"], "indexedSharePoint")
+        self.assertEqual(body["retrievalInstructions"], "Use iq-workshop-webiq with contentFormat passage.")
+
+    def test_web_reference_urls_are_displayed_from_source_data(self):
+        url = "https://www.python.org/downloads/"
+        for data in (
+            {"content": json.dumps({"url": url, "content": "evidence"})},
+            {"url": url, "content": "plain text evidence"},
+            {"url": url},
+        ):
+            self.http.post.return_value = http_response(200, {
+                "response": [], "activity": [],
+                "references": [{"type": "mcpServer", "id": "0", "sourceData": data}],
+            })
+            for cell_id in ("ask-internal", "ask-web", "ask-mixed"):
+                with self.subTest(cell=cell_id, data=data), patch("builtins.print") as output:
+                    exec(code_cell(APIM, cell_id), self.ns)
+                    self.assertIn(url, str(output.call_args_list))
+                    parameters = self.http.post.call_args.kwargs["json"]["knowledgeSourceParams"]
+                    web = next(p for p in parameters if p["kind"] == "mcpServer")
+                    self.assertTrue(web["includeReferenceSourceData"])
 
     def test_knowledge_base_requires_notebook_08(self):
         self.http.get.return_value = http_response(404, {})

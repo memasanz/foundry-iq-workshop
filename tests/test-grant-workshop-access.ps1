@@ -6,7 +6,8 @@ $tenant = '00000000-0000-0000-0000-000000000002'
 $group = "/subscriptions/$subscription/resourceGroups/test-workshop"
 $search = "$group/providers/Microsoft.Search/searchServices/test-search"
 $storage = "$group/providers/Microsoft.Storage/storageAccounts/teststorage"
-$project = "$group/providers/Microsoft.CognitiveServices/accounts/test-ai/projects/test-project"
+$foundry = "$group/providers/Microsoft.CognitiveServices/accounts/test-ai"
+$project = "$foundry/projects/test-project"
 $fixtureText = @"
 AZURE_SUBSCRIPTION_ID=$subscription
 AZURE_TENANT_ID=$tenant
@@ -25,6 +26,11 @@ $global:TestDirectory = @{
     'charlie@example.com' = @{ id = '00000000-0000-0000-0000-000000000005'; userPrincipalName = 'charlie@example.com' }
 }
 $global:TestDirectory['00000000-0000-0000-0000-000000000003'] = $global:TestDirectory['alice@example.com']
+$global:TestAssignments.Add([pscustomobject]@{
+    principalId = $global:TestDirectory['alice@example.com'].id
+    roleDefinitionId = "/subscriptions/$subscription/providers/Microsoft.Authorization/roleDefinitions/53ca6127-db72-4b80-b1b0-d745d6d5456d"
+    scope = $project
+})
 
 function global:az {
     $arguments = @($args)
@@ -87,7 +93,14 @@ try {
     Assert-Equal @($global:TestAssignments | Where-Object { $_.scope -eq $search }).Count 4 'Search roles must be service-scoped'
     $container = "$storage/blobServices/default/containers/workshop-documents"
     Assert-Equal @($global:TestAssignments | Where-Object { $_.scope -eq $container }).Count 2 'Blob roles must be container-scoped'
-    Assert-Equal @($global:TestAssignments | Where-Object { $_.scope -eq $project }).Count 2 'Foundry roles must be project-scoped'
+    $foundryOwners = @($global:TestAssignments | Where-Object {
+        $_.roleDefinitionId -eq "/subscriptions/$subscription/providers/Microsoft.Authorization/roleDefinitions/c883944f-8b7b-4483-af10-35834be79c4a"
+    })
+    Assert-Equal $foundryOwners.Count 2 'Each attendee must receive Foundry Owner'
+    foreach ($assignment in $foundryOwners) {
+        Assert-Equal $assignment.scope $foundry 'Foundry Owner must be assigned on the parent account, not only the project'
+    }
+    Assert-Equal @($global:TestAssignments | Where-Object { $_.scope -eq $project }).Count 1 'Pre-existing project Foundry User assignments must be preserved, without adding redundant ones'
 
     & $scriptPath -EnvironmentFile $fixture.FullName -Users 'alice@example.com', 'bob@example.com' | Out-Null
     Assert-Equal $global:TestCreates 8 'Repeated execution must not create duplicate assignments'
@@ -118,7 +131,20 @@ try {
     }
     Assert-Equal $failed $true 'Scopes outside the configured workshop must be rejected'
     Assert-Equal $global:TestCreates 8 'Invalid scopes must not change assignments'
-    Write-Host 'Permissions script checks passed: scoped roles, duplicate attendees, reruns, WhatIf and explicit failures.'
+
+    $fixtureText.Replace("AZURE_AI_PROJECT_RESOURCE_ID=$project", "AZURE_AI_PROJECT_RESOURCE_ID=$foundry") |
+        Set-Content -LiteralPath $fixture.FullName
+    $failed = $false
+    try {
+        & $scriptPath -EnvironmentFile $fixture.FullName -Users 'alice@example.com' | Out-Null
+    }
+    catch {
+        if ($_.Exception.Message -notlike 'AZURE_AI_PROJECT_RESOURCE_ID must*') { throw }
+        $failed = $true
+    }
+    Assert-Equal $failed $true 'Malformed project IDs must be rejected before deriving the Foundry Owner scope'
+    Assert-Equal $global:TestCreates 8 'Malformed project IDs must not change assignments'
+    Write-Host 'Permissions script checks passed: parent-account Foundry Owner, preserved existing roles, scoped roles, duplicate attendees, reruns, WhatIf and explicit failures.'
 }
 finally {
     Remove-Item -LiteralPath $fixture.FullName

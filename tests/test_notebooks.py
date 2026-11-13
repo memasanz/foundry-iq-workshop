@@ -24,15 +24,12 @@ def code_cell(notebook_name, cell_id):
 def rest_namespace():
     namespace = {
         "requests": Mock(),
-        "time": SimpleNamespace(perf_counter=lambda: 1, sleep=Mock()),
-        "os": Mock(),
+        "time": SimpleNamespace(sleep=Mock()),
         "json": json,
         "api_key": "test-key",
         "question": "public topic",
         "web": {"webResults": [{"url": "https://example.com"}]},
     }
-    exec(code_cell("01-web-iq-apis.ipynb", "optional-exercises"), namespace)
-    namespace["os"].getenv.return_value = "true"
     return namespace
 
 
@@ -51,8 +48,9 @@ class NotebookStructureTests(unittest.TestCase):
                 introduction = nbformat.read(path, as_version=4).cells[0]
                 self.assertEqual(introduction.cell_type, "markdown")
                 self.assertIn("## Required permissions", introduction.source)
-                self.assertIn("WORKSHOP_PREFIX", introduction.source)
-                self.assertIn("not enforce access isolation", introduction.source)
+                if path.name != "01-web-iq-apis.ipynb":
+                    self.assertIn("WORKSHOP_PREFIX", introduction.source)
+                    self.assertIn("not enforce access isolation", introduction.source)
 
     def test_notebook_schema_syntax_and_clean_outputs(self):
         paths = list((ROOT / "notebooks").glob("*.ipynb"))
@@ -65,6 +63,7 @@ class NotebookStructureTests(unittest.TestCase):
             "09-foundry-iq-knowledge-base.ipynb", "10-foundry-iq-apim.ipynb",
             "11-hosted-agent.ipynb", "12-foundry-iq-toolbox-agent.ipynb",
             "13-web-iq-authentication.ipynb",
+            "14-foundry-iq-webiq-only.ipynb",
         }
         self.assertEqual(required, {path.name for path in paths})
         for path in sorted(ROOT / "notebooks" / name for name in required):
@@ -127,10 +126,11 @@ class AttendeeAliasTests(unittest.TestCase):
             6: ("index_name",),
             7: ("index_name", "data_source_name", "skillset_name", "indexer_name"),
             8: ("remote_source_name", "remote_base_name"),
-            9: ("blob_folder", "blob_source_name", "sharepoint_source_name", "webiq_source_name", "knowledge_base_name"),
+            9: ("blob_source_name", "sharepoint_source_name", "webiq_source_name", "knowledge_base_name"),
             10: ("knowledge_base_name",),
             11: ("agent_name", "agent_folder"),
             12: ("knowledge_base_name", "toolbox_name", "agent_name", "agent_folder"),
+            14: ("webiq_source_name", "knowledge_base_name"),
         }
         for number, keys in objects.items():
             with self.subTest(notebook=number):
@@ -156,18 +156,27 @@ class AttendeeAliasTests(unittest.TestCase):
                 self.assertEqual(kb["blob_source_name"], apim["blob_source_name"])
                 self.assertEqual(kb["sharepoint_source_name"], apim["sharepoint_source_name"])
                 self.assertEqual(kb["blob_source_name"], hosted["blob_source_name"])
+                self.assertEqual(kb["blob_index_name"], self.configure(4, alias)["index_name"])
+                self.assertEqual(kb["sharepoint_index_name"], self.configure(7, alias)["index_name"])
                 self.assertEqual(apim["webiq_source_name"], "iq-workshop-webiq")
                 self.assertEqual(hosted["connection_name"], "iq-workshop-search-mcp")
 
-    def test_webiq_connection_override_cannot_overwrite_another_attendee(self):
+    def test_toolbox_name_is_stable_and_prefixed_across_sessions(self):
+        first = self.configure(3, "alice01")
+        second = self.configure(3, "alice01")
+        self.assertEqual(first["toolbox_name"], "alice01-webiq-toolbox")
+        self.assertEqual(second["toolbox_name"], first["toolbox_name"])
+        self.assertNotEqual(first["toolbox_connection_name"], second["toolbox_connection_name"])
+        self.assertNotEqual(first["agent_name"], second["agent_name"])
+        self.assertTrue(first["toolbox_connection_name"].startswith("alice01-webiq-toolbox-"))
+
+    def test_webiq_connection_name_is_derived_only_from_prefix(self):
         for number in (2, 3):
-            for name in ("webiq-mcp", "bob02-webiq-mcp", "alice01x-webiq-mcp"):
+            for name in ("webiq-mcp", "bob02-webiq-mcp", "alice01-custom"):
                 with self.subTest(notebook=number, connection=name):
-                    with self.assertRaisesRegex(ValueError, "must start with your WORKSHOP_PREFIX"):
-                        self.configure(number, "alice01", WEBIQ_CONNECTION_NAME=name)
-            namespace = self.configure(number, "alice01", WEBIQ_CONNECTION_NAME="alice01-custom")
-            key = "connection_name" if number == 2 else "webiq_connection_name"
-            self.assertEqual(namespace[key], "alice01-custom")
+                    namespace = self.configure(number, "alice01", WEBIQ_CONNECTION_NAME=name)
+                    key = "connection_name" if number == 2 else "webiq_connection_name"
+                    self.assertEqual(namespace[key], "alice01-webiq-mcp")
 
     def test_new_webiq_alias_validation_rejects_invalid_names(self):
         for number in (2, 3):
@@ -207,25 +216,22 @@ class DirectApiCellTests(unittest.TestCase):
             exec(code_cell("01-web-iq-apis.ipynb", cell_id), self.ns)
         return output
 
-    def test_all_six_core_apis_run_with_defaults_and_example_configuration(self):
-        from dotenv import dotenv_values
-
-        for settings in ({}, dotenv_values(ROOT / ".env.example")):
-            with self.subTest(configuration="example" if settings else "defaults"):
-                self.ns["os"].getenv.side_effect = lambda name, default: settings.get(name, default)
-                self.post.return_value = http_response(
-                    200, {"webResults": [{"url": "https://example.com"}]},
-                )
-                for cell_id in ("web-search", "browse", "news", "images", "videos", "auto"):
-                    with self.subTest(cell=cell_id):
-                        self.post.reset_mock()
-                        self.run_cell(cell_id)
-                        self.post.assert_called_once()
-
-    def test_places_remains_optional_without_configuration(self):
-        self.ns["os"].getenv.side_effect = lambda name, default: default
-        self.run_cell("places")
-        self.post.assert_not_called()
+    def test_all_apis_run_even_with_legacy_service_flags_disabled(self):
+        settings = {
+            f"WEBIQ_ENABLE_{service}": "false"
+            for service in ("BROWSE", "NEWS", "IMAGES", "VIDEOS")
+        }
+        with patch.dict(os.environ, settings):
+            self.post.return_value = http_response(
+                200, {"webResults": [{"url": "https://example.com"}]},
+            )
+            for cell_id in (
+                "web-search", "browse", "news", "images", "videos",
+            ):
+                with self.subTest(cell=cell_id):
+                    self.post.reset_mock()
+                    self.run_cell(cell_id)
+                    self.post.assert_called_once()
 
     def test_search_endpoint_headers_and_payload(self):
         self.post.return_value = http_response(200, {"webResults": [{"url": "https://example.com"}]})
@@ -246,7 +252,6 @@ class DirectApiCellTests(unittest.TestCase):
         endpoints = {
             "localized-search": "search/web", "news": "search/news",
             "images": "search/images", "videos": "search/videos",
-            "places": "search/places", "auto": "auto",
         }
         for cell_id, endpoint in endpoints.items():
             with self.subTest(cell=cell_id):
@@ -269,6 +274,45 @@ class DirectApiCellTests(unittest.TestCase):
         self.ns["time"].sleep.assert_called_once_with(60)
         self.assertEqual(self.post.call_count, 2)
         self.assertEqual(self.post.call_args.kwargs["json"]["url"], "https://example.com")
+
+    def test_browse_requests_passages_without_full_document_permission(self):
+        self.post.return_value = http_response(200, {"content": "Relevant excerpt"})
+        self.run_cell("browse")
+        self.assertEqual(self.post.call_args.kwargs["json"], {
+            "url": "https://example.com",
+            "query": self.ns["question"],
+            "contentFormat": "passage",
+            "maxLength": 3000,
+            "liveCrawl": "fallback",
+        })
+
+    def test_image_previews_show_thumbnails_and_source_pages(self):
+        self.ns["images"] = {"imageResults": [
+            {"title": "Datacenter", "hostPageUrl": "https://example.com/article",
+             "thumbnailUrl": "https://example.com/thumb.jpg",
+             "url": "https://example.com/full.jpg"},
+            {"url": "https://example.com/second.jpg"},
+            {"title": "No preview"},
+        ]}
+        with patch("IPython.display.Image") as image, patch("IPython.display.display") as display:
+            output = self.run_cell("image-previews")
+        self.assertEqual(image.call_args_list, [
+            unittest.mock.call(url="https://example.com/thumb.jpg", width=400, embed=False),
+            unittest.mock.call(url="https://example.com/second.jpg", width=400, embed=False),
+        ])
+        self.assertEqual(display.call_count, 2)
+        printed = [call.args for call in output.call_args_list]
+        self.assertIn(("Title:", "Datacenter"), printed)
+        self.assertIn(("Source page:", "https://example.com/article"), printed)
+        self.assertIn(("No preview URL available.",), printed)
+        self.post.assert_not_called()
+
+    def test_image_previews_handle_empty_results(self):
+        self.ns["images"] = {}
+        with patch("IPython.display.display") as display:
+            output = self.run_cell("image-previews")
+        display.assert_not_called()
+        output.assert_called_once_with("No images returned. Try another image search query.")
 
     def test_http_failure_is_not_hidden_or_retried(self):
         for status in (401, 403, 429, 503):
@@ -297,101 +341,10 @@ class DirectApiCellTests(unittest.TestCase):
             self.run_cell("browse")
         self.ns["time"].sleep.assert_not_called()
 
-    def test_disabled_exercises_do_not_make_requests(self):
-        self.ns["os"].getenv.return_value = "false"
-        for cell_id in (
-            "browse", "news", "images", "videos", "places", "places-inspect",
-            "auto", "auto-inspect", "auto-advanced",
-        ):
-            self.run_cell(cell_id)
-        self.post.assert_not_called()
-
     def test_empty_search_response_is_displayed_without_fabricated_fields(self):
         self.post.return_value = http_response(200, {})
         self.run_cell("web-search")
         self.assertEqual(self.ns["web"], {})
-
-    def test_places_request_uses_documented_parameters(self):
-        self.post.return_value = http_response(200, {"placeResults": []})
-        self.run_cell("places")
-        self.assertEqual(self.post.call_args.kwargs["json"], {
-            "query": "public libraries near downtown Seattle",
-            "maxResults": 3, "language": "en", "region": "US",
-            "location": "lat:47.6062;long:-122.3321",
-        })
-        self.assertEqual(self.ns["places"]["placeResults"], [])
-
-    def test_places_inspection_preserves_missing_rating_and_zero_count(self):
-        self.ns["places"] = {"placeResults": [{
-            "name": "Example library",
-            "location": {"city": "Seattle"},
-            "reviews": [{"providerName": "Example provider", "ratingCount": 0}],
-        }]}
-        output = self.run_cell("places-inspect")
-        printed = [call.args for call in output.call_args_list]
-        self.assertIn(("Rating:", "(unavailable)"), printed)
-        self.assertIn(("Rating count:", 0), printed)
-        self.assertIn(("Rating provider:", "Example provider"), printed)
-        self.post.assert_not_called()
-
-    def test_places_inspection_handles_no_results(self):
-        self.ns["places"] = {}
-        output = self.run_cell("places-inspect")
-        output.assert_called_once_with("Places returned:", 0)
-
-    def test_beta_permission_failures_remain_explicit(self):
-        for cell_id in ("places", "auto"):
-            with self.subTest(cell=cell_id):
-                self.post.reset_mock()
-                self.post.return_value = http_response(403, {})
-                with self.assertRaises(requests.HTTPError):
-                    self.run_cell(cell_id)
-                self.assertEqual(self.post.call_count, 1)
-
-    def test_auto_inspection_keeps_citations_with_evidence(self):
-        self.ns["auto"] = {"results": [
-            {
-                "evidence": {"type": "text", "content": "First finding"},
-                "citations": [{"title": "First source", "url": "https://example.com/first"}],
-            },
-            {
-                "evidence": {"type": "structured/timeZone", "content": {"name": "Example zone"}},
-                "citations": [],
-            },
-        ]}
-        output = self.run_cell("auto-inspect")
-        printed = [call.args for call in output.call_args_list]
-        first_url = printed.index(("URL:", "https://example.com/first"))
-        second_evidence = printed.index(("\n[2] Type: structured/timeZone",))
-        self.assertLess(first_url, second_evidence)
-        self.assertIn(("Supporting citations:", 0), printed)
-        self.assertIn(("Updated:", "(unavailable)"), printed)
-        self.post.assert_not_called()
-
-    def test_auto_inspection_handles_no_results(self):
-        self.ns["auto"] = {}
-        output = self.run_cell("auto-inspect")
-        output.assert_called_once_with("Evidence items:", 0)
-
-    def test_advanced_auto_requires_explicit_opt_in(self):
-        self.run_cell("auto-advanced")
-        self.post.assert_not_called()
-
-    def test_auto_modes_compare_the_same_query_and_budget(self):
-        self.post.return_value = http_response(200, {"results": []})
-        self.run_cell("auto")
-        fast_payload = self.post.call_args.kwargs["json"]
-        source = code_cell("01-web-iq-apis.ipynb", "auto-advanced")
-        source = source.replace("RUN_AUTO_ADVANCED = False", "RUN_AUTO_ADVANCED = True")
-        with patch("builtins.print"):
-            exec(source, self.ns)
-        advanced_payload = self.post.call_args.kwargs["json"]
-        self.assertEqual(advanced_payload, {**fast_payload, "mode": "advanced"})
-        self.assertEqual(fast_payload["mode"], "fast")
-        self.assertEqual(fast_payload["responseFilter"], ["web", "news"])
-        self.assertEqual(fast_payload["maxResponseLength"], 6000)
-        self.assertEqual(self.post.call_count, 2)
-
 
 class AgentDiscoveryTests(unittest.IsolatedAsyncioTestCase):
     async def discover(
@@ -489,8 +442,94 @@ class AgentDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             )
 
 
+class WebIqAgentReuseTests(unittest.TestCase):
+    def setUp(self):
+        from azure.ai.projects.models import MCPTool, PromptAgentDefinition
+
+        self.project = Mock()
+        self.project.agents.list.return_value = []
+        self.project.agents.create_version.side_effect = lambda **kwargs: SimpleNamespace(
+            name=kwargs["agent_name"], version="2",
+        )
+        self.ns = {
+            "prefix": "alice01", "project": self.project, "os": os,
+            "mcp_url": "https://api.microsoft.ai/v3/mcp",
+            "connection_id": "/projects/test/connections/alice01-webiq-mcp",
+            "MCPTool": MCPTool, "PromptAgentDefinition": PromptAgentDefinition,
+        }
+
+    def existing_agent(self, name, url="https://api.microsoft.ai/v3/mcp"):
+        definition = self.ns["PromptAgentDefinition"](
+            model="old-model",
+            tools=[self.ns["MCPTool"](server_label="webiq", server_url=url)],
+        )
+        return SimpleNamespace(
+            name=name, versions=SimpleNamespace(latest=SimpleNamespace(definition=definition)),
+        )
+
+    def run_cell(self):
+        with patch.dict(os.environ, {"AZURE_AI_MODEL_DEPLOYMENT_NAME": "workshop-chat"}), patch("builtins.print"):
+            exec(code_cell("02-foundry-web-iq-agent.ipynb", "create-agent"), self.ns)
+
+    def test_rerun_updates_same_agent_and_disables_tool_approvals(self):
+        self.run_cell()
+        self.project.agents.list.return_value = [self.existing_agent("alice01-webiq-agent")]
+        self.run_cell()
+        calls = self.project.agents.create_version.call_args_list
+        self.assertEqual([call.kwargs["agent_name"] for call in calls], [
+            "alice01-webiq-agent", "alice01-webiq-agent",
+        ])
+        for call in calls:
+            definition = call.kwargs["definition"]
+            self.assertEqual(definition.model, "workshop-chat")
+            self.assertEqual(definition.tools[0].require_approval, "never")
+            self.assertEqual(definition.tools[0].allowed_tools, ["web"])
+            self.assertEqual(definition.tools[0].project_connection_id, self.ns["connection_id"])
+        self.assertEqual(self.project.get_openai_client().conversations.create.call_count, 2)
+
+    def test_reuses_newest_legacy_match_without_touching_other_agents(self):
+        self.project.agents.list.return_value = [
+            self.existing_agent("bob02-webiq-agent-new"),
+            self.existing_agent("alice01x-webiq-agent-new"),
+            self.existing_agent("alice01-webiq-toolbox-agent-new"),
+            self.existing_agent("alice01-webiq-agent-other", "https://other.example/mcp"),
+            self.existing_agent("alice01-webiq-agent-newest"),
+            self.existing_agent("alice01-webiq-agent-older"),
+        ]
+        self.run_cell()
+        self.project.agents.list.assert_called_once_with(order="desc")
+        self.assertEqual(
+            self.project.agents.create_version.call_args.kwargs["agent_name"],
+            "alice01-webiq-agent-newest",
+        )
+
+    def test_stable_name_takes_precedence_over_legacy_names(self):
+        self.project.agents.list.return_value = [
+            self.existing_agent("alice01-webiq-agent-newest"),
+            self.existing_agent("alice01-webiq-agent"),
+        ]
+        self.run_cell()
+        self.assertEqual(
+            self.project.agents.create_version.call_args.kwargs["agent_name"],
+            "alice01-webiq-agent",
+        )
+
+    def test_name_collision_does_not_overwrite_unrelated_agent(self):
+        self.project.agents.list.return_value = [
+            self.existing_agent("alice01-webiq-agent", "https://other.example/mcp"),
+        ]
+        with self.assertRaisesRegex(RuntimeError, "not a Web IQ prompt agent"):
+            self.run_cell()
+        self.project.agents.create_version.assert_not_called()
+
+    def test_missing_settings_fail_without_interactive_prompts(self):
+        for setting in ("WEBIQ_API_KEY", "WORKSHOP_PREFIX"):
+            with self.subTest(setting=setting), self.assertRaisesRegex(RuntimeError, setting):
+                AttendeeAliasTests().configure(2, "alice01", **{setting: ""})
+
+
 class AgentHelperTests(unittest.TestCase):
-    def namespace(self, responses, notebook_name="02-foundry-web-iq-agent.ipynb"):
+    def namespace(self, responses, notebook_name="03-foundry-web-iq-toolbox.ipynb"):
         client = Mock()
         client.responses.create.side_effect = responses
         namespace = {
@@ -501,7 +540,7 @@ class AgentHelperTests(unittest.TestCase):
         exec(code_cell(notebook_name, "agent-helper"), namespace)
         return namespace
 
-    def test_approval_continues_previous_response(self):
+    def test_approval_continues_same_conversation(self):
         approval = SimpleNamespace(
             type="mcp_approval_request", id="approval-1",
             server_label="webiq", name="web", arguments='{"query":"public"}',
@@ -515,9 +554,44 @@ class AgentHelperTests(unittest.TestCase):
         self.assertIs(response, last)
         self.assertEqual(len(history), 2)
         continuation = ns["openai"].responses.create.call_args.kwargs
-        self.assertEqual(continuation["previous_response_id"], "r1")
+        self.assertEqual(continuation["conversation"], "conversation-1")
         self.assertTrue(continuation["input"][0]["approve"])
-        self.assertNotIn("conversation", continuation)
+        self.assertNotIn("previous_response_id", continuation)
+
+    def test_follow_up_resolves_approvals_in_original_conversation(self):
+        for notebook in ("03-foundry-web-iq-toolbox.ipynb",):
+            with self.subTest(notebook=notebook):
+                pending = set()
+                turns = []
+
+                def create_response(**kwargs):
+                    self.assertEqual(kwargs.get("conversation"), "conversation-1")
+                    self.assertNotIn("previous_response_id", kwargs)
+                    if isinstance(kwargs["input"], str):
+                        self.assertFalse(pending, "Previous approval was not resolved.")
+                        turns.append(kwargs["input"])
+                        approval_id = f"approval-{len(turns)}"
+                        pending.add(approval_id)
+                        return SimpleNamespace(
+                            id=f"request-{len(turns)}",
+                            output=[SimpleNamespace(
+                                type="mcp_approval_request", id=approval_id,
+                                server_label="webiq", name="web", arguments="{}",
+                            )],
+                        )
+                    for decision in kwargs["input"]:
+                        self.assertTrue(decision["approve"])
+                        pending.remove(decision["approval_request_id"])
+                    return SimpleNamespace(
+                        id=f"completed-{len(turns)}", output=[], status="completed",
+                    )
+
+                ns = self.namespace(create_response, notebook_name=notebook)
+                with patch("builtins.input", return_value="y"), patch("builtins.print"):
+                    ns["ask_agent"]("Initial research question")
+                    ns["ask_agent"]("Follow-up research question")
+                self.assertEqual(len(turns), 2)
+                self.assertFalse(pending)
 
     def test_approval_defaults_to_denied(self):
         approval = SimpleNamespace(
@@ -534,9 +608,33 @@ class AgentHelperTests(unittest.TestCase):
         self.assertFalse(decision["approve"])
 
     def test_failed_response_is_not_success(self):
-        ns = self.namespace([SimpleNamespace(id="r1", output=[], status="failed")])
-        with self.assertRaisesRegex(RuntimeError, "status failed"):
-            ns["ask_agent"]("public question")
+        for notebook in ("02-foundry-web-iq-agent.ipynb", "03-foundry-web-iq-toolbox.ipynb"):
+            with self.subTest(notebook=notebook):
+                ns = self.namespace([SimpleNamespace(id="r1", output=[], status="failed")], notebook)
+                with self.assertRaisesRegex(RuntimeError, "status failed"):
+                    ns["ask_agent"]("public question")
+
+    def test_noninteractive_questions_and_follow_up_share_conversation(self):
+        first = SimpleNamespace(id="r1", output=[SimpleNamespace(type="mcp_call")], status="completed")
+        last = SimpleNamespace(id="r2", output=[], status="completed")
+        ns = self.namespace([first, last], "02-foundry-web-iq-agent.ipynb")
+        with patch("builtins.input", side_effect=AssertionError("Must not prompt")):
+            response, history = ns["ask_agent"]("public question")
+            follow_up, _ = ns["ask_agent"]("follow-up question")
+        self.assertIs(response, first)
+        self.assertEqual(history, first.output)
+        self.assertIs(follow_up, last)
+        for call in ns["openai"].responses.create.call_args_list:
+            self.assertEqual(call.kwargs["conversation"], "conversation-1")
+
+    def test_unexpected_approval_fails_without_prompting(self):
+        ns = self.namespace([
+            SimpleNamespace(id="r1", output=[SimpleNamespace(type="mcp_approval_request")]),
+        ], "02-foundry-web-iq-agent.ipynb")
+        with patch("builtins.input", side_effect=AssertionError("Must not prompt")):
+            with self.assertRaisesRegex(RuntimeError, "Unexpected tool approval"):
+                ns["ask_agent"]("public question")
+        self.assertEqual(ns["openai"].responses.create.call_count, 1)
 
     def test_final_allowed_approval_can_complete(self):
         approval = SimpleNamespace(
