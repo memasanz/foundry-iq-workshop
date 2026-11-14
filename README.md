@@ -1,4 +1,4 @@
-# Azure IQ workshop
+# Web & Foundry IQ Workshop
 
 ## Overview
 

@@ -66,7 +66,7 @@ Use only public, non-sensitive queries. Retrieved pages are untrusted evidence, 
 | API 403 / MCP tool absent | Check your allowed services and full-document entitlement. The optional notebook flags cannot grant access. |
 | Browse returns 202 | Lab 01 waits for `retryAfter` and retries with a bounded limit. An unfinished crawl prints an error; the console app also exits nonzero. |
 | 429 | Respect `Retry-After`; reduce concurrency, especially with shared workshop AppIDs. |
-| No Python kernel / imports fail | Select **Azure IQ Workshop**, install `requirements.txt` with that environment's Python, then restart the kernel. |
+| No Python kernel / imports fail | Select **Web & Foundry IQ Workshop**, install `requirements.txt` with that environment's Python, then restart the kernel. |
 | Missing `.env.azure` | Ask the facilitator for the shared configuration, or finish your own deployment. Do not invent endpoints. |
 | Notebook uses an old endpoint | Remove stale generated-setting overrides from `.env` and restart the kernel. |
 | Foundry 403 | Check the sign-in tenant and parent-resource/project roles for the specific operation; allow time for propagation. |
