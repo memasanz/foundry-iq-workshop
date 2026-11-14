@@ -180,6 +180,7 @@ public static class LabTests
                     "full run stops on MCP failure");
                 Check(handler.Requests.All(request => request.Path == "/v3/mcp"), "no resource creation after discovery failure");
             }
+            await StepCommands();
             File.Delete(".env.azure");
             foreach (string name in names.Skip(1))
                 Environment.SetEnvironmentVariable(name, null);
@@ -210,8 +211,98 @@ public static class LabTests
             File.Delete(Path.Combine(folder, ".env"));
             File.Delete(Path.Combine(folder, ".env.azure"));
             File.Delete(Path.Combine(folder, "az.cmd"));
-            Directory.Delete(folder);
+            Directory.Delete(folder, true);
         }
+    }
+
+    private static async Task StepCommands()
+    {
+        using (var handler = new Handler())
+        using (var client = new HttpClient(handler))
+        {
+            await Throws(() => FoundryWebIqProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("token")), "ask requires pinned state");
+            Check(handler.Requests.Count == 0, "missing agent prevents all remote requests");
+        }
+        using (var handler = new Handler())
+        using (var client = new HttpClient(handler))
+        {
+            Check(await FoundryWebIqProgram.RunAsync(new[] { "connection" }, client, _ => Task.FromResult("token")) == 0, "connection step");
+            Check(handler.Requests.Count == 1 && handler.Requests[0].Method == "PUT", "connection performs only ARM PUT");
+        }
+        string env = File.ReadAllText(".env"), azure = File.ReadAllText(".env.azure");
+        try
+        {
+            File.WriteAllText(".env", string.Join("\n", env.Split('\n').Where(line => !line.StartsWith("WEBIQ_API_KEY="))));
+            File.WriteAllText(".env.azure", string.Join("\n", azure.Split('\n').Where(line => !line.StartsWith("WEBIQ_API_KEY="))));
+            Environment.SetEnvironmentVariable("WEBIQ_API_KEY", null);
+            using (var handler = new Handler())
+            using (var client = new HttpClient(handler))
+            {
+                Check(await FoundryWebIqProgram.RunAsync(new[] { "agent" }, client, _ => Task.FromResult("token")) == 0, "agent needs no key");
+                Check(handler.Requests.Count(r => r.Method == "POST") == 1
+                    && handler.Requests.Where(r => r.Method != "GET").All(r => r.Path.EndsWith("/versions")), "agent does not configure/discover/ask");
+            }
+            foreach (string command in new[] { "ask", "follow-up" })
+            {
+                using var handler = new Handler();
+                using var client = new HttpClient(handler);
+                Check(await FoundryWebIqProgram.RunAsync(new[] { command, "public custom question" }, client, _ => Task.FromResult("token")) == 0, command + " succeeds across invocations");
+                Check(handler.Requests.Count(r => r.Path.EndsWith("/responses")) == 1, "only one paid response");
+                Check(handler.Requests.Count(r => r.Path.EndsWith("/conversations")) == (command == "ask" ? 1 : 0), "follow-up reuses conversation");
+                Check(handler.Requests.All(r => r.Method == "GET" || r.Path.EndsWith("/responses") || r.Path.EndsWith("/conversations")), "no implicit resource creation");
+                JsonObject request = handler.Requests.Single(r => r.Path.EndsWith("/responses")).Body!;
+                Check((string?)request["conversation"] == "conv_test"
+                    && (string?)request["agent_reference"]!["name"] == "alice01-webiq-agent"
+                    && (string?)request["agent_reference"]!["version"] == "2"
+                    && (string?)request["input"] == "public custom question", "same pinned version/conversation and custom input");
+            }
+            string statePath = Path.Combine(".workshop", "lab02-alice01.json");
+            string state = File.ReadAllText(statePath);
+            Check(!state.Contains("token") && !state.Contains("key") && !state.Contains("public custom question")
+                && !state.Contains("source evidence"), "cache has no credentials/prompts/outputs");
+            using (var handler = new Handler { ResponseMode = "429" })
+            using (var client = new HttpClient(handler))
+                Check(await FoundryWebIqProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("token")) == 1, "failed new question");
+            using (var handler = new Handler())
+            using (var client = new HttpClient(handler))
+            {
+                await Throws(() => FoundryWebIqProgram.RunAsync(new[] { "follow-up" }, client, _ => Task.FromResult("token")), "failed ask invalidates follow-up");
+                Check(handler.Requests.Count == 0, "no paid calls after failed initial");
+            }
+            using (var handler = new Handler { StaleAgent = true })
+            using (var client = new HttpClient(handler))
+            {
+                await Throws(() => FoundryWebIqProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("token")), "stale agent policy");
+                Check(handler.Requests.All(r => r.Method == "GET"), "stale agent makes only reads");
+            }
+            string scopedAzure = File.ReadAllText(".env.azure");
+            File.AppendAllText(".env.azure", "\nAZURE_AI_PROJECT_ENDPOINT=https://other.services.ai.azure.com/api/projects/other\n");
+            using (var handler = new Handler())
+            using (var client = new HttpClient(handler))
+            {
+                await Throws(() => FoundryWebIqProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("token")), "project scope mismatch");
+                Check(handler.Requests.Count == 0, "scope mismatch fails before Azure calls");
+            }
+            File.WriteAllText(".env.azure", scopedAzure);
+            File.WriteAllText(statePath, "malformed references");
+            Environment.SetEnvironmentVariable("WORKSHOP_PREFIX", "help-must-not-load-env");
+            using (var handler = new Handler())
+            using (var client = new HttpClient(handler))
+            {
+                Check(await FoundryWebIqProgram.RunAsync(new[] { "--help" }, client) == 0
+                    && Environment.GetEnvironmentVariable("WORKSHOP_PREFIX") == "help-must-not-load-env", "help reads no env/cache");
+                Check(handler.Requests.Count == 0, "help is offline");
+            }
+        }
+        finally
+        {
+            File.WriteAllText(".env", env);
+            File.WriteAllText(".env.azure", azure);
+        }
+        // The original full flow remains independent even when step references are malformed.
+        using (var handler = new Handler())
+        using (var client = new HttpClient(handler))
+            Check(await FoundryWebIqProgram.RunAsync(new[] { "run" }, client, _ => Task.FromResult("token")) == 0, "run ignores cached state");
     }
 
     private static JsonObject Completed(string mode = "complete")
@@ -220,14 +311,18 @@ public static class LabTests
         if (mode != "no-tools")
             output.Add(new JsonObject
             {
-                ["type"] = "mcp_call", ["name"] = "web", ["server_label"] = "webiq",
-                ["arguments"] = "{\"query\":\"public query\"}", ["output"] = "source evidence",
+                ["type"] = "mcp_call",
+                ["name"] = "web",
+                ["server_label"] = "webiq",
+                ["arguments"] = "{\"query\":\"public query\"}",
+                ["output"] = "source evidence",
                 ["error"] = mode == "tool-error" ? "retrieval failed" : null,
             });
         if (mode != "no-answer")
             output.Add(new JsonObject
             {
-                ["type"] = "message", ["role"] = "assistant",
+                ["type"] = "message",
+                ["role"] = "assistant",
                 ["content"] = new JsonArray(new JsonObject { ["type"] = "output_text", ["text"] = "Answer https://example.test/source" }),
             });
         return new JsonObject { ["id"] = "resp_test", ["status"] = "completed", ["output"] = output };
@@ -264,6 +359,7 @@ public static class LabTests
         public bool Sse, MissingWeb, FailTransport, BrokenStream;
         public int DiscoveryStatus = 200, ConnectionStatus = 200;
         public string AgentMode = "new", ResponseMode = "complete";
+        public bool StaleAgent;
         private static string? Header(HttpRequestMessage request, string name) =>
             request.Headers.TryGetValues(name, out var values) ? values.Single() : null;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
@@ -293,11 +389,17 @@ public static class LabTests
                 JsonObject result = method == "initialize"
                     ? new JsonObject { ["protocolVersion"] = "2025-06-18", ["capabilities"] = new JsonObject() }
                     : body["params"]?["cursor"] == null
-                        ? new JsonObject { ["tools"] = new JsonArray(new JsonObject
+                        ? new JsonObject
+                        {
+                            ["tools"] = new JsonArray(new JsonObject
                             { ["name"] = MissingWeb ? "news" : "web", ["description"] = "Find evidence", ["inputSchema"] = new JsonObject() }),
-                            ["nextCursor"] = "next-page" }
-                        : new JsonObject { ["tools"] = new JsonArray(new JsonObject
-                            { ["name"] = "browse", ["description"] = "Read a URL", ["inputSchema"] = new JsonObject() }) };
+                            ["nextCursor"] = "next-page"
+                        }
+                        : new JsonObject
+                        {
+                            ["tools"] = new JsonArray(new JsonObject
+                            { ["name"] = "browse", ["description"] = "Read a URL", ["inputSchema"] = new JsonObject() })
+                        };
                 var response = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = body["id"]!.DeepClone(), ["result"] = result };
                 HttpResponseMessage reply = Sse
                     ? Reply(200, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"}\n\n"
@@ -308,7 +410,19 @@ public static class LabTests
                 return reply;
             }
             if (path.Contains("/connections/"))
-                return Reply(ConnectionStatus, "{\"id\":\"connection\"}");
+                return Reply(ConnectionStatus, new JsonObject { ["id"] = Settings.ConnectionId, ["target"] = FoundryWorkshop.McpUrl }.ToJsonString());
+            if (request.Method == HttpMethod.Get && path.Contains("/agents/") && path.Contains("/versions/"))
+            {
+                JsonObject definition = FoundryWorkshop.CreateDefinition(Settings.Model);
+                definition["tools"]![0]!["project_connection_id"] = Settings.ConnectionId;
+                if (StaleAgent) definition["tools"]![0]!["require_approval"] = "always";
+                return Reply(200, new JsonObject
+                {
+                    ["name"] = path.Split('/')[^3],
+                    ["version"] = path.Split('/')[^1],
+                    ["definition"] = definition
+                }.ToJsonString());
+            }
             if (path.EndsWith("/agents"))
             {
                 var agents = new JsonArray();
@@ -317,9 +431,18 @@ public static class LabTests
                     if (AgentMode != "new")
                     {
                         string name = AgentMode == "legacy" ? "alice01-webiq-agent-old" : "alice01-webiq-agent";
-                        agents.Add(new JsonObject { ["name"] = name,
-                            ["versions"] = new JsonObject { ["latest"] = new JsonObject { ["definition"] =
-                                AgentMode == "conflict" ? new JsonObject { ["kind"] = "hosted" } : FoundryWorkshop.CreateDefinition("old-model") } } });
+                        agents.Add(new JsonObject
+                        {
+                            ["name"] = name,
+                            ["versions"] = new JsonObject
+                            {
+                                ["latest"] = new JsonObject
+                                {
+                                    ["definition"] =
+                                AgentMode == "conflict" ? new JsonObject { ["kind"] = "hosted" } : FoundryWorkshop.CreateDefinition("old-model")
+                                }
+                            }
+                        });
                     }
                     return Reply(200, new JsonObject { ["data"] = agents, ["has_more"] = false }.ToJsonString());
                 }
@@ -341,8 +464,12 @@ public static class LabTests
                 if (ResponseMode == "approval")
                     return Reply(200, "{\"status\":\"completed\",\"output\":[{\"type\":\"mcp_approval_request\"}]}");
                 if (ResponseMode is "failed" or "incomplete")
-                    return Reply(200, new JsonObject { ["id"] = "resp_test", ["status"] = ResponseMode,
-                        ["error"] = new JsonObject { ["message"] = "synthetic execution failure" } }.ToJsonString());
+                    return Reply(200, new JsonObject
+                    {
+                        ["id"] = "resp_test",
+                        ["status"] = ResponseMode,
+                        ["error"] = new JsonObject { ["message"] = "synthetic execution failure" }
+                    }.ToJsonString());
                 return Reply(200, Completed(ResponseMode).ToJsonString());
             }
             throw new Exception("Unexpected offline request: " + path);

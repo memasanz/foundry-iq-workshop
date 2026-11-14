@@ -25,7 +25,8 @@ public sealed class WorkshopState
         if (!File.Exists(state.FilePath)) return state;
         try
         {
-            JsonObject value = JsonNode.Parse(File.ReadAllText(state.FilePath))!.AsObject();
+            JsonObject value = JsonNode.Parse(File.ReadAllText(state.FilePath)) as JsonObject
+                ?? throw new InvalidOperationException("Local references must be a JSON object.");
             if ((string?)value["projectEndpoint"] != settings.ProjectEndpoint
                 || (string?)value["projectResourceId"] != settings.ProjectResourceId
                 || (string?)value["prefix"] != settings.Prefix || (string?)value["lab"] != lab
@@ -89,10 +90,16 @@ public sealed class WorkshopState
         Directory.CreateDirectory(".workshop");
         var value = new JsonObject
         {
-            ["schema"] = 1, ["lab"] = lab, ["prefix"] = settings.Prefix,
-            ["projectEndpoint"] = settings.ProjectEndpoint, ["projectResourceId"] = settings.ProjectResourceId,
-            ["toolboxVersion"] = ToolboxVersion, ["agentName"] = AgentName, ["agentVersion"] = AgentVersion,
-            ["conversationId"] = ConversationId, ["initialCompleted"] = InitialCompleted,
+            ["schema"] = 1,
+            ["lab"] = lab,
+            ["prefix"] = settings.Prefix,
+            ["projectEndpoint"] = settings.ProjectEndpoint,
+            ["projectResourceId"] = settings.ProjectResourceId,
+            ["toolboxVersion"] = ToolboxVersion,
+            ["agentName"] = AgentName,
+            ["agentVersion"] = AgentVersion,
+            ["conversationId"] = ConversationId,
+            ["initialCompleted"] = InitialCompleted,
         };
         string pending = FilePath + ".new";
         try

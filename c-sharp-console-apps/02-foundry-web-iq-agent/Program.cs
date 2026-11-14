@@ -10,7 +10,8 @@ public static class FoundryWebIqProgram
             return await RunAsync(args, client);
         }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException
-            or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
+            or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception
+            or IOException or UnauthorizedAccessException)
         {
             Console.WriteLine($"Lab could not complete: {error.Message}");
             return 1;
@@ -105,12 +106,12 @@ public static class FoundryWebIqProgram
         }
         JsonObject agent = state.AgentReference();
         JsonObject? conversation = command == "follow-up" ? state.ConversationReference() : null;
-        await lab.ValidateWebIqConnectionAsync();
-        await lab.ValidateAgentVersionAsync(agent);
         // Invalidate completion BEFORE a new request, so an interrupted/failed question cannot reuse stale success.
         if (command == "ask") state.ClearConversation();
         else state.InitialCompleted = false;
         state.Save();
+        await lab.ValidateWebIqConnectionAsync();
+        await lab.ValidateAgentVersionAsync(agent);
         conversation ??= await lab.CreateConversationAsync();
         if (conversation == null) return 1;
         string question = args.Length > 1 ? string.Join(" ", args.Skip(1))

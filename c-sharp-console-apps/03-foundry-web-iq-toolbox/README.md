@@ -12,6 +12,25 @@ dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- run
 
 Complete lab 02's connection setup first. Load `.env`, then `.env.azure` (file values override environment values; `.env.azure` wins). Required: `AZURE_AI_PROJECT_ENDPOINT`, `AZURE_AI_PROJECT_RESOURCE_ID`, `AZURE_AI_MODEL_DEPLOYMENT_NAME`, `AZURE_TENANT_ID`, `WORKSHOP_PREFIX`. **No Web IQ API key is read or required.** Sign in with `az login --tenant <AZURE_TENANT_ID>`. You need **Foundry Owner on the parent Foundry resource**, access to lab 02's connection, an existing chat model and toolbox preview availability; no new API key or tenant administrator role is needed. Prefixes avoid collisions, not enforce isolation.
 
+## Run one step at a time
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- webiq-connection
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- toolbox
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- discover
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- toolbox-connection
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- agent
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- ask
+```
+
+Each command performs only its named action plus necessary metadata reads. `webiq-connection` checks the original connection without writing it. `toolbox` publishes/promotes a new version. `discover` reads the **existing default**, validates its source/policy, lists MCP tools and selects that version without publishing. To reuse an existing toolbox, start with `discover`.
+
+`toolbox-connection` writes only the new Entra connection for the selected version. `agent` requires that existing connection's target, audience and metadata to match the selected immutable toolbox version; it does not silently retarget it. `ask [public question]` validates the toolbox, Entra connection and pinned agent version/model/policy, creates a fresh conversation, asks once and verifies retrieval. No step runs an implicit search/question, interactive approval or follow-up. `run` remains the independent original single-question full flow and does not read/populate the step cache.
+
+Step references persist atomically in ignored `.workshop\lab03-<prefix>.json`: project identifiers, selected toolbox version, agent name/version, conversation ID and completion state only. URLs/names are derived from the validated project/prefix and immutable version. **No credentials, tokens, prompts, answers or tool outputs are stored.** Selecting a different toolbox or updating its connection clears the pinned agent and conversation; run `agent` again. Failed new questions invalidate prior completion. Failed setup steps do not replace successfully selected references.
+
+Keep running from the repository root. Missing references give the prerequisite command; mismatched remote targets/policies stop before any billable call. To clear local references (not Azure resources), run `Remove-Item .\.workshop\lab03-alice01.json`, replacing `alice01` with your prefix, then `discover`, `toolbox-connection`, `agent`, `ask` as needed. Different prefixes use different files; changing projects under the same prefix requires clearing that file. Console references survive editor/kernel restarts. Help reads no configuration or cache.
+
 ## Flow and authentication
 
 1. Metadata-only GET of `<prefix>-webiq-mcp`: validate its exact Web IQ target; never fetch credentials or update this connection.

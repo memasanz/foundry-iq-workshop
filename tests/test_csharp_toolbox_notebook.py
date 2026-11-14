@@ -80,6 +80,7 @@ class CSharpToolboxNotebookTests(unittest.TestCase):
         source = (ROOT / "tests" / "c-sharp-toolbox" / "ToolboxTests.cs").read_text(encoding="utf-8")
         handler = "using System.Net;\n" + source[source.index("public sealed class ToolboxOfflineHandler"):]
         handler = handler.replace("ToolboxTests.Settings.ConnectionId", json.dumps(PROJECT_ID + "/connections/alice01-webiq-mcp"))
+        handler = handler.replace("ToolboxWorkshop.Instructions", json.dumps(self.instructions))
         wire_checks = method(source, "public static void AssertWire")
         wire_checks = wire_checks.replace("ToolboxWorkshop.Question", json.dumps(self.question))
         wire_checks = wire_checks.replace("ToolboxWorkshop.Instructions", json.dumps(self.instructions))

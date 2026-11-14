@@ -45,6 +45,34 @@ dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- run 'Find
 
 **A full run changes Azure resources and incurs model-token and Web IQ usage charges.** Only use public, non-sensitive questions. A completed initial response always triggers another billable follow-up turn, even if retrieval verification warns.
 
+## Run one step at a time
+
+Like lab 01's separate API commands, these commands run only the named step and necessary metadata reads:
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- discover
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- connection
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- agent
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- ask
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- follow-up
+```
+
+`connection` only creates/updates the API-key connection. `agent` checks that connection and publishes/reuses an agent version without modifying the connection or discovering tools. `ask [public question]` checks the existing connection and exact pinned agent policy/model, creates a new conversation and asks/verifies **once**. `follow-up [public question]` uses the stored conversation and **same immutable agent version**, only after a completed initial response. Default questions match the full run.
+
+Only `discover`, `connection` and `run` read/require `WEBIQ_API_KEY`. The other steps need the Azure settings and prefix but use the already provisioned connection. Missing/stale prerequisites stop before any billable response; commands never replay earlier steps or silently repair resources. `run` retains its original automatic follow-up and does not read or populate the step cache.
+
+### Local references
+
+Step commands save atomic, prefix/lab/project-scoped references in ignored `.workshop\lab02-<prefix>.json`. This contains only project identifiers, agent name/version, conversation ID and completion state—**no API keys, access tokens, prompts, answers or tool outputs**. Agent/connection changes clear the old conversation. Before a new question or follow-up, completion is invalidated so errors/interruption cannot leave a stale successful turn eligible for follow-up. Successful completed questions restore it.
+
+Keep running from the repository root. A kernel/editor restart does not affect this console cache. To start over locally:
+
+```powershell
+Remove-Item .\.workshop\lab02-alice01.json # Replace alice01 with WORKSHOP_PREFIX.
+```
+
+Then rerun `agent`, `ask` (and `connection` if needed). Removing the cache deletes **no Azure resources**. A different project under the same prefix requires clearing this file; a different prefix has a separate file. Do not manually edit versions or store credentials in it. Help reads neither configuration nor cache.
+
 ## What the app does
 
 1. Discovers tools; a failed discovery stops the run before any Azure writes.

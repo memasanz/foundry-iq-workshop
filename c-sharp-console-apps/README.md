@@ -33,6 +33,9 @@ Labs 02 and 03 also provide **separate commands for each lab step**.
 Use `--help` to see their command lists, then follow the selected lab README in order.
 Each step runs separately so you can inspect discovery, connections, toolbox or agent creation, and answers.
 The `run` command still performs the complete workflow; you do not have to execute the separate steps first.
+Step commands save version and conversation references in ignored `.workshop\lab02-<prefix>.json`
+or `.workshop\lab03-<prefix>.json`, without credentials, prompts or answers.
+Follow the lab README when restarting the sequence; stale references stop a question before a model call.
 
 Keep local settings in the repository-root `.env` and, when required, `.env.azure`.
 Follow the selected lab's instructions for which values to set; never put credentials in source code or commit them.

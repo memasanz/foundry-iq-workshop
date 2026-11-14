@@ -102,6 +102,106 @@ public static class ToolboxTests
         Console.WriteLine("PASS C# lab 03: wire shapes, auth hops, stable names/version pins, MCP JSON/SSE/pagination/errors, no approvals/follow-up, retrieval guards (offline).");
     }
 
+    private static async Task StepCommands()
+    {
+        foreach (string command in new[] { "ask", "agent", "toolbox-connection" })
+        {
+            using var handler = new ToolboxOfflineHandler();
+            using var client = new HttpClient(handler);
+            await Throws(() => FoundryToolboxProgram.RunAsync(new[] { command }, client, _ => Task.FromResult("synthetic-token")), "missing " + command + " prerequisites");
+            Check(handler.Requests.Count == 0, "missing cached prerequisites prevent all remote calls");
+        }
+        using (var handler = new ToolboxOfflineHandler())
+        using (var client = new HttpClient(handler))
+        {
+            Check(await FoundryToolboxProgram.RunAsync(new[] { "webiq-connection" }, client, _ => Task.FromResult("synthetic-token")) == 0, "original metadata command");
+            Check(handler.Requests.Count == 1 && handler.Requests[0].Method == "GET", "metadata command reads only");
+        }
+        foreach (string command in new[] { "toolbox", "discover", "toolbox-connection", "agent", "ask" })
+        {
+            using var handler = new ToolboxOfflineHandler { DefaultAlreadySelected = command != "toolbox" };
+            using var client = new HttpClient(handler);
+            Check(await FoundryToolboxProgram.RunAsync(new[] { command }, client, _ => Task.FromResult("synthetic-token")) == 0, command + " across independent invocations");
+            var writes = handler.Requests.Where(r => r.Method != "GET" && !r.Path.EndsWith("/mcp")).ToArray();
+            if (command == "toolbox")
+                Check(writes.Length == 2 && writes[0].Path.EndsWith("/toolboxes/alice01-webiq-toolbox/versions")
+                    && writes[1].Method == "PATCH", "toolbox only publishes/promotes");
+            if (command == "discover")
+                Check(writes.Length == 0 && handler.Requests.Any(r => r.Path.EndsWith("/versions/7/mcp")), "discovery reads existing default without publishing");
+            if (command == "toolbox-connection")
+                Check(writes.Length == 1 && writes[0].Method == "PUT", "connection only writes its named connection");
+            if (command == "agent")
+                Check(writes.Length == 1 && writes[0].Path.EndsWith("/agents/alice01-webiq-toolbox-agent/versions"), "agent never silently writes connection/toolbox");
+            if (command == "ask")
+            {
+                Check(writes.Length == 2 && writes[0].Path.EndsWith("/conversations") && writes[1].Path.EndsWith("/responses"), "ask only creates conversation and invokes once");
+                Check((string?)writes[1].Body!["agent_reference"]!["version"] == "9", "selected agent version pinned");
+            }
+            Check(handler.Requests.All(r => r.Key == null), "all step commands ignore API key");
+        }
+        string statePath = Path.Combine(".workshop", "lab03-alice01.json");
+        string state = File.ReadAllText(statePath);
+        Check(!state.Contains("synthetic-token") && !state.Contains("must-not-be-read") && !state.Contains(ToolboxWorkshop.Question)
+            && !state.Contains("source evidence"), "no tokens/keys/prompts/results saved");
+        foreach (string mode in new[] { "stale-connection", "stale-agent" })
+        {
+            using var handler = new ToolboxOfflineHandler { Mode = mode };
+            using var client = new HttpClient(handler);
+            await Throws(() => FoundryToolboxProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("synthetic-token")), "stale refs " + mode);
+            Check(handler.Requests.All(r => r.Method == "GET"), "mismatched references skip billable requests");
+        }
+        using (var handler = new ToolboxOfflineHandler { Mode = "stale-connection" })
+        using (var client = new HttpClient(handler))
+        {
+            await Throws(() => FoundryToolboxProgram.RunAsync(new[] { "agent" }, client, _ => Task.FromResult("synthetic-token")), "agent requires matching existing connection");
+            Check(handler.Requests.All(r => r.Method == "GET"), "agent does not repair connection implicitly");
+        }
+        using (var handler = new ToolboxOfflineHandler { Mode = "runtime-429" })
+        using (var client = new HttpClient(handler))
+            await Throws(() => FoundryToolboxProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("synthetic-token")), "failed new question");
+        Check((bool?)JsonNode.Parse(File.ReadAllText(statePath))!["initialCompleted"] == false, "failed question invalidates old completion");
+        string before = File.ReadAllText(statePath);
+        using (var handler = new ToolboxOfflineHandler { Mode = "connection-202" })
+        using (var client = new HttpClient(handler))
+            await Throws(() => FoundryToolboxProgram.RunAsync(new[] { "toolbox-connection" }, client, _ => Task.FromResult("synthetic-token")), "unsuccessful step not saved");
+        Check(File.ReadAllText(statePath) == before, "failed connection step leaves selected references unchanged");
+        string azure = File.ReadAllText(".env.azure");
+        try
+        {
+            File.AppendAllText(".env.azure", "\nAZURE_AI_PROJECT_ENDPOINT=https://other.services.ai.azure.com/api/projects/other\n");
+            using var handler = new ToolboxOfflineHandler();
+            using var client = new HttpClient(handler);
+            await Throws(() => FoundryToolboxProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("synthetic-token")), "project scope mismatch");
+            Check(handler.Requests.Count == 0, "other project never uses saved references for billable calls");
+        }
+        finally
+        {
+            File.WriteAllText(".env.azure", azure);
+        }
+        JsonObject olderSelection = JsonNode.Parse(File.ReadAllText(statePath))!.AsObject();
+        olderSelection["toolboxVersion"] = "6";
+        File.WriteAllText(statePath, olderSelection.ToJsonString());
+        using (var handler = new ToolboxOfflineHandler { DefaultAlreadySelected = true })
+        using (var client = new HttpClient(handler))
+            Check(await FoundryToolboxProgram.RunAsync(new[] { "discover" }, client, _ => Task.FromResult("synthetic-token")) == 0, "select existing new default without publishing");
+        using (var handler = new ToolboxOfflineHandler())
+        using (var client = new HttpClient(handler))
+        {
+            await Throws(() => FoundryToolboxProgram.RunAsync(new[] { "ask" }, client, _ => Task.FromResult("synthetic-token")), "new selection clears older agent");
+            Check(handler.Requests.Count == 0, "selecting another toolbox version requires a matching agent first");
+        }
+        File.WriteAllText(statePath, "malformed refs");
+        Environment.SetEnvironmentVariable("WORKSHOP_PREFIX", "help-must-not-read-env");
+        using (var handler = new ToolboxOfflineHandler())
+        using (var client = new HttpClient(handler))
+        {
+            Check(await FoundryToolboxProgram.RunAsync(new[] { "--help" }, client) == 0
+                && Environment.GetEnvironmentVariable("WORKSHOP_PREFIX") == "help-must-not-read-env", "help reads no env or cache");
+            Check(await FoundryToolboxProgram.RunAsync(new[] { "run" }, client, _ => Task.FromResult("synthetic-token")) == 0, "full run ignores malformed step state");
+            Check(handler.Requests.Count(r => r.Path.EndsWith("/responses")) == 1, "full run still asks once");
+        }
+    }
+
     public static void AssertWire(ToolboxOfflineHandler handler)
     {
         var requests = handler.Requests;
@@ -180,6 +280,7 @@ public static class ToolboxTests
             using var client = new HttpClient(handler);
             Check(await FoundryToolboxProgram.RunAsync(new[] { "run" }, client, _ => Task.FromResult("synthetic-token")) == 0, "console run");
             AssertWire(handler);
+            await StepCommands();
             Check(await FoundryToolboxProgram.RunAsync(new[] { "--help" }, client) == 0, "offline help");
             Check(await FoundryToolboxProgram.RunAsync(new[] { "invalid" }, client) == 2, "invalid command");
         }
@@ -245,13 +346,65 @@ public sealed class ToolboxOfflineHandler : HttpMessageHandler
             return reply;
         }
         if (path.EndsWith("/toolboxes/alice01-webiq-toolbox/versions")) return Reply(200, "{\"version\":\"7\"}");
+        if (request.Method == HttpMethod.Get && path.EndsWith("/toolboxes/alice01-webiq-toolbox/versions/7"))
+            return Reply(200, new JsonObject
+            {
+                ["version"] = "7",
+                ["tools"] = new JsonArray(new JsonObject
+                {
+                    ["type"] = "mcp",
+                    ["server_label"] = "webiq",
+                    ["server_url"] = FoundryWorkshop.McpUrl,
+                    ["project_connection_id"] = ToolboxTests.Settings.ConnectionId,
+                    ["allowed_tools"] = new JsonArray("web", "news"),
+                    ["require_approval"] = "never",
+                })
+            }.ToJsonString());
         if (path.EndsWith("/toolboxes/alice01-webiq-toolbox"))
             return Reply(200, "{\"default_version\":\"" + (Mode == "promotion-failed" ? "6"
                 : request.Method == HttpMethod.Patch || DefaultAlreadySelected ? "7" : "6") + "\"}");
         if (path.EndsWith("/connections/alice01-webiq-toolbox-connection"))
+        {
+            if (request.Method == HttpMethod.Get)
+                return Reply(200, new JsonObject
+                {
+                    ["properties"] = new JsonObject
+                    {
+                        ["category"] = "RemoteTool",
+                        ["authType"] = "UserEntraToken",
+                        ["audience"] = "https://ai.azure.com",
+                        ["target"] = "https://workshop.services.ai.azure.com/api/projects/workshop/toolboxes/alice01-webiq-toolbox/versions/"
+                        + (Mode == "stale-connection" ? "8" : "7") + "/mcp?api-version=v1",
+                        ["isSharedToAll"] = true,
+                        ["metadata"] = new JsonObject
+                        { ["type"] = "toolbox_MCP", ["toolboxName"] = "alice01-webiq-toolbox", ["toolboxVersion"] = "7" },
+                    }
+                }.ToJsonString());
             return Reply(Mode == "connection-202" ? 202 : 201, "{}");
+        }
         if (path.EndsWith("/agents/alice01-webiq-toolbox-agent/versions"))
             return Reply(200, "{\"name\":\"alice01-webiq-toolbox-agent\",\"version\":\"9\"}");
+        if (request.Method == HttpMethod.Get && path.EndsWith("/agents/alice01-webiq-toolbox-agent/versions/9"))
+            return Reply(200, new JsonObject
+            {
+                ["name"] = "alice01-webiq-toolbox-agent",
+                ["version"] = "9",
+                ["definition"] = new JsonObject
+                {
+                    ["kind"] = "prompt",
+                    ["model"] = "test-model",
+                    ["instructions"] = ToolboxWorkshop.Instructions,
+                    ["tools"] = new JsonArray(new JsonObject
+                    {
+                        ["type"] = "mcp",
+                        ["server_label"] = "webiq_toolbox",
+                        ["server_url"] = "https://workshop.services.ai.azure.com/api/projects/workshop/toolboxes/alice01-webiq-toolbox/versions/7/mcp?api-version=v1",
+                        ["project_connection_id"] = "alice01-webiq-toolbox-connection",
+                        ["allowed_tools"] = new JsonArray("webiq___web", "webiq___news"),
+                        ["require_approval"] = Mode == "stale-agent" ? "always" : "never",
+                    }),
+                }
+            }.ToJsonString());
         if (path.EndsWith("/conversations")) return Reply(200, "{\"id\":\"conv_offline\"}");
         if (path.EndsWith("/responses"))
         {

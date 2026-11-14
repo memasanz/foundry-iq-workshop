@@ -83,6 +83,45 @@ public sealed class ToolboxWorkshop
     public string ToolboxUrl(JsonObject version) => settings.ProjectEndpoint + "/toolboxes/" + ToolboxName
         + "/versions/" + Uri.EscapeDataString(Required(version, "version")) + "/mcp?api-version=v1";
 
+    public async Task<JsonObject> GetDefaultToolboxVersionAsync()
+    {
+        JsonObject toolbox = await RequestAsync(HttpMethod.Get,
+            settings.ProjectEndpoint + "/toolboxes/" + ToolboxName + "?api-version=v1");
+        return new JsonObject { ["version"] = Required(toolbox, "default_version") };
+    }
+
+    public async Task ValidateToolboxVersionAsync(JsonObject reference)
+    {
+        JsonObject original = await GetWebIqConnectionAsync();
+        JsonObject version = await RequestAsync(HttpMethod.Get, settings.ProjectEndpoint + "/toolboxes/"
+            + ToolboxName + "/versions/" + Uri.EscapeDataString(Required(reference, "version")) + "?api-version=v1");
+        JsonArray? tools = version["tools"] as JsonArray;
+        JsonNode? tool = tools?.Count == 1 ? tools[0] : null;
+        if (Text(version["version"]) != Required(reference, "version") || Text(tool?["type"]) != "mcp"
+            || Text(tool?["server_label"]) != "webiq" || Text(tool?["server_url"]) != FoundryWorkshop.McpUrl
+            || Text(tool?["project_connection_id"]) != Required(original, "id")
+            || Text(tool?["require_approval"]) != "never"
+            || !JsonNode.DeepEquals(tool?["allowed_tools"], new JsonArray("web", "news")))
+            throw new InvalidOperationException("Selected toolbox version is missing or its Web IQ source/policy differs. Run toolbox then discover again.");
+    }
+
+    public async Task ValidateToolboxConnectionAsync(string toolboxUrl, JsonObject version)
+    {
+        JsonObject? connection = await transport.SendJsonAsync(HttpMethod.Get,
+            "https://management.azure.com" + settings.ProjectResourceId + "/connections/" + ConnectionName
+            + "?api-version=2025-10-01-preview", "https://management.azure.com/");
+        JsonNode? p = connection?["properties"];
+        if (Text(p?["category"]) != "RemoteTool" || Text(p?["authType"]) != "UserEntraToken"
+            || Text(p?["target"]) != toolboxUrl || Text(p?["audience"]) != "https://ai.azure.com"
+            || p?["isSharedToAll"]?.GetValue<bool>() != true
+            || Text(p?["metadata"]?["type"]) != "toolbox_MCP" || Text(p?["metadata"]?["toolboxName"]) != ToolboxName
+            || Text(p?["metadata"]?["toolboxVersion"]) != Required(version, "version"))
+            throw new InvalidOperationException("Existing agent-to-toolbox connection does not match the selected version. Run toolbox-connection then agent; do not reuse a mismatched older agent.");
+    }
+
+    public Task ValidateAgentVersionAsync(JsonObject reference, string toolboxUrl) =>
+        transport.ValidateAgentVersionAsync(reference, toolboxUrl, ConnectionName, Instructions);
+
     public async Task<JsonArray> DiscoverToolsAsync(string toolboxUrl)
     {
         // Azure CLI --resource is equivalent to the SDK scope https://ai.azure.com/.default.

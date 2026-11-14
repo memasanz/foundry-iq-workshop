@@ -328,7 +328,8 @@ public sealed class FoundryWorkshop
             throw new InvalidOperationException("The existing Web IQ connection is missing or has the wrong target. Run connection first.");
     }
 
-    public async Task ValidateAgentVersionAsync(JsonObject reference, string? toolboxUrl = null, string? toolboxConnectionName = null)
+    public async Task ValidateAgentVersionAsync(JsonObject reference, string? toolboxUrl = null,
+        string? toolboxConnectionName = null, string? expectedInstructions = null)
     {
         string name = RequiredText(reference, "name");
         string baseName = settings.Prefix + (toolboxUrl == null ? "-webiq-agent" : "-webiq-toolbox-agent");
@@ -343,11 +344,12 @@ public sealed class FoundryWorkshop
         JsonArray allowed = toolboxUrl == null ? new JsonArray("web", "browse") : new JsonArray("webiq___web", "webiq___news");
         if (Text(agent?["name"]) != name || Text(agent?["version"]) != RequiredText(reference, "version")
             || Text(definition?["kind"]) != "prompt" || Text(definition?["model"]) != settings.Model
+            || Text(definition?["instructions"]) != (expectedInstructions ?? Instructions)
             || Text(tool?["type"]) != "mcp" || Text(tool?["server_label"]) != (toolboxUrl == null ? "webiq" : "webiq_toolbox")
             || Text(tool?["server_url"]) != (toolboxUrl ?? McpUrl)
             || Text(tool?["project_connection_id"]) != (toolboxConnectionName ?? settings.ConnectionId)
             || Text(tool?["require_approval"]) != "never" || !JsonNode.DeepEquals(tool?["allowed_tools"], allowed))
-            throw new InvalidOperationException("Pinned agent is missing or its model, endpoint, connection or policy differs. Run agent again before asking.");
+            throw new InvalidOperationException("Pinned agent is missing or its model, instructions, endpoint, connection or policy differs. Run agent again before asking.");
     }
 
     public async Task<JsonObject?> CreateAgentVersionAsync(JsonObject definition)
