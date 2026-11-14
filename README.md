@@ -23,7 +23,7 @@ You can take one track or work through the whole workshop. The notebooks show th
 
 ## Choose your code
 
-**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore lab 01 in an optional [Polyglot Notebook](c-sharp-notebooks/01-web-iq-apis.dib) or a [.NET 10 console app](c-sharp-console-apps/01-web-iq-apis). Polyglot Notebooks uses deprecated tooling; the console app is the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
+**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore lab 01 in an optional [Polyglot Notebook](c-sharp-notebooks/01-web-iq-apis.ipynb) or a [.NET 10 console app](c-sharp-console-apps/01-web-iq-apis). Polyglot Notebooks uses deprecated tooling; the console app is the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
 
 ## Workshop guides
 

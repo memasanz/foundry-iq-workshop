@@ -1,7 +1,9 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently, [lab 01 - Web IQ APIs](01-web-iq-apis.dib) is available.
+Currently, [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb) is available.
+The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
+Python is not required when using the Polyglot Notebooks extension in VS Code.
 
 [Workshop home](../README.md) | [Participant guide](../docs/participants/README.md) | [Supported C# console apps](../c-sharp-console-apps/README.md)
 
@@ -28,14 +30,14 @@ It describes three requirements: VS Code, a .NET runtime and the Polyglot Notebo
    The console apps target .NET 10; having that SDK does not guarantee compatibility with a legacy notebook kernel.
 3. In VS Code, open **Extensions** (`Ctrl+Shift+X`), search for **Polyglot Notebooks**, and install Microsoft's extension:
    [`ms-dotnettools.dotnet-interactive-vscode`](https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.dotnet-interactive-vscode).
-   Reload VS Code if prompted. The ordinary Jupyter extension alone does not run these `.dib` files.
+   Reload VS Code if prompted. For these `.ipynb` files, use the .NET Interactive C# kernel, not a Python kernel.
 
 ## 2. Check that C# cells run
 
 Use the small, offline check from the Learn guide before making Web IQ calls:
 
 1. Open the Command Palette (`Ctrl+Shift+P`), search for **Polyglot**, and select **Polyglot Notebook: Create new blank notebook**.
-2. Select **`.ipynb`**, then **C#**, as in the Learn exercise. The workshop's existing notebook uses `.dib`; you do not need to convert it.
+2. Select **`.ipynb`**, then **C#**, as in the Learn exercise and the workshop's notebook format.
 3. Allow the first-time **Installing .NET Interactive** step to finish if it appears.
 4. Enter this code and select the cell's **Run** button:
 
@@ -61,7 +63,7 @@ If `.env.azure` exists, the notebook loads it after `.env`, so its duplicate set
 
 ## 4. Open and run lab 01
 
-Open [01-web-iq-apis.dib](01-web-iq-apis.dib) in VS Code and use its **C#** kernel.
+Open [01-web-iq-apis.ipynb](01-web-iq-apis.ipynb) in VS Code and select the **.NET Interactive C#** kernel.
 Run the kernel from the `c-sharp-notebooks` directory so the parent settings files and shared-helper import resolve.
 To check its working directory, run this in a C# scratch cell:
 
@@ -80,3 +82,6 @@ HTTP failures print status/body without a traceback; fix the issue and rerun the
 
 **Calls and Browse retries incur Web IQ usage charges.** Use public, non-sensitive queries only.
 See [costs and responsible use](../docs/reference/README.md#costs-and-responsible-use).
+
+Unlike `.dib`, `.ipynb` can save execution outputs. Clear outputs before committing or sharing the source notebook;
+`.gitignore` ignores separate executed copies, not outputs embedded in this file.

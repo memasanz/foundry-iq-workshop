@@ -1,7 +1,7 @@
 import ast
+import copy
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -43,23 +43,20 @@ class CSharpNotebookTests(unittest.TestCase):
         )
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
-        parts = re.split(
-            r"^#!(meta|markdown|csharp)\s*$",
-            (ROOT / "c-sharp-notebooks" / "01-web-iq-apis.dib").read_text(encoding="utf-8"),
-            flags=re.MULTILINE,
-        )
-        cls.sources = [parts[index + 1].strip() for index in range(1, len(parts), 2)
-                       if parts[index] == "csharp"]
+        cls.notebook = nbformat.read(ROOT / "c-sharp-notebooks" / "01-web-iq-apis.ipynb", as_version=4)
+        nbformat.validate(cls.notebook)
 
     def execute(self, handler, checks):
-        notebook = nbformat.v4.new_notebook(cells=[
-            nbformat.v4.new_code_cell(self.sources[0]),
-            nbformat.v4.new_code_cell(handler),
-            *(nbformat.v4.new_code_cell(source) for source in self.sources[1:]),
-            nbformat.v4.new_code_cell(checks),
-        ])
+        notebook = copy.deepcopy(self.notebook)
+        setup_index = next(index for index, cell in enumerate(notebook.cells) if cell.cell_type == "code")
+        notebook.cells.insert(setup_index + 1, nbformat.v4.new_code_cell(
+            handler, metadata=copy.deepcopy(notebook.cells[setup_index].metadata),
+        ))
+        notebook.cells.append(nbformat.v4.new_code_cell(
+            checks, metadata=copy.deepcopy(notebook.cells[setup_index].metadata),
+        ))
         kernel = KernelManager(
-            kernel_name=".net-csharp",
+            kernel_name=notebook.metadata.kernelspec.name,
             kernel_spec_manager=KernelSpecManager(kernel_dirs=[str(self.kernel_directory)]),
         )
         client = NotebookClient(

@@ -10,7 +10,7 @@
 |---|---|---|
 | [Python notebooks](python.md) | 01-14 | Python/Jupyter cells; follow the Python setup guide. |
 | [C# console apps](c-sharp.md#c-console-app-lab-01) | 01 | Supported .NET 10 console app; choose one API per run. |
-| [C# Polyglot Notebooks](c-sharp.md#optional-legacy-c-notebook-lab-01) | 01 | C# cells in an optional legacy Polyglot Notebook (`.dib`); deprecated tooling. |
+| [C# Polyglot Notebooks](c-sharp.md#optional-legacy-c-notebook-lab-01) | 01 | C# cells in an optional legacy Polyglot Notebook (`.ipynb`); deprecated tooling. |
 
 The tracks share the root `.env` and `.env.azure`. Labs 02-14 have not been translated to C# yet. No Python installation is required for the console app.
 

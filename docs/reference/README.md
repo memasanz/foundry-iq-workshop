@@ -133,7 +133,7 @@ Run the commands below from the repository root.
 
 ### Verify notebooks from a Python script
 
-Run the actual notebook cells without opening Jupyter:
+Run the actual **Python** notebook cells without opening Jupyter. For C# `.ipynb` notebooks, use the [Polyglot Notebooks setup](../../c-sharp-notebooks/README.md) instead:
 
 ```powershell
 .\.venv\Scripts\python.exe .\scripts\run-notebooks.py .\python-notebooks\01-web-iq-apis.ipynb
