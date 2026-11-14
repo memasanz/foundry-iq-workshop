@@ -147,7 +147,7 @@ public static class LabTests
     private static async Task ConsoleFlow()
     {
         string oldDirectory = Directory.GetCurrentDirectory();
-        string folder = Path.Combine(Path.GetTempPath(), "foundry-csharp-tests-" + Guid.NewGuid().ToString("N"));
+        string folder = Path.Combine(Directory.GetCurrentDirectory(), ".foundry-csharp-tests-" + Guid.NewGuid().ToString("N"));
         string[] names = { "WEBIQ_API_KEY", "WORKSHOP_PREFIX", "AZURE_AI_PROJECT_ENDPOINT",
             "AZURE_AI_PROJECT_RESOURCE_ID", "AZURE_AI_MODEL_DEPLOYMENT_NAME", "AZURE_TENANT_ID" };
         var original = names.ToDictionary(name => name, Environment.GetEnvironmentVariable);

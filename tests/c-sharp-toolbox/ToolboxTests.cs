@@ -35,6 +35,32 @@ public static class ToolboxTests
                     && resources.All(r => r is "https://ai.azure.com/" or "https://management.azure.com/"), "token audiences");
                 AssertWire(handler);
             }
+        foreach (string protocol in new[] { "2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25" })
+            foreach (bool sse in new[] { false, true })
+            {
+                using var handler = new ToolboxOfflineHandler { Protocol = protocol, Sse = sse };
+                using var client = new HttpClient(handler);
+                var lab = new ToolboxWorkshop(client, Settings, _ => Task.FromResult("synthetic-token"));
+                Check((await lab.DiscoverToolsAsync(Settings.ProjectEndpoint + "/toolboxes/alice01-webiq-toolbox/versions/7/mcp?api-version=v1")).Count == 2,
+                    "negotiated discovery " + protocol);
+                Check((string?)handler.Requests[0].Body!["params"]!["protocolVersion"] == "2025-06-18", "existing lab 02 request version retained");
+                Check(handler.Requests.Skip(1).All(r => r.Protocol == protocol && r.Session == "synthetic-session"),
+                    "negotiated protocol, not requested version, is forwarded");
+            }
+        using (var handler = new ToolboxOfflineHandler { Protocol = "2099-01-01" })
+        using (var client = new HttpClient(handler))
+        {
+            try
+            {
+                await new ToolboxWorkshop(client, Settings, _ => Task.FromResult("synthetic-token")).DiscoverToolsAsync("https://example.test/mcp");
+                throw new Exception("FAIL: unknown protocol accepted");
+            }
+            catch (InvalidOperationException error)
+            {
+                Check(error.Message.Contains("2099-01-01"), "unsupported error identifies actual server version");
+                Check(!handler.Requests.Any(r => (string?)r.Body?["method"] == "tools/list"), "unknown protocol stops before tools/list");
+            }
+        }
         foreach (string mode in new[] { "wrong-target", "missing-news", "discovery-401", "rpc-error",
             "repeated-cursor", "connection-202", "approval", "failed", "runtime-429", "promotion-failed" })
         {
@@ -66,6 +92,11 @@ public static class ToolboxTests
             foreach (string mode in new[] { "wrong-label", "wrong-tool", "tool-error", "empty-output", "no-answer", "no-url" })
                 await Throws(() => { lab.VerifyRetrieval(ToolboxOfflineHandler.Completed(mode)); return Task.CompletedTask; }, mode);
             Check(lab.VerifyRetrieval(ToolboxOfflineHandler.Completed("news-only")), "news OR web is sufficient");
+            JsonObject stringEvidence = ToolboxOfflineHandler.Completed("complete");
+            stringEvidence["output"]![0]!["output"] = "false";
+            Check(lab.VerifyRetrieval(stringEvidence), "non-empty string evidence follows Python truthiness");
+            stringEvidence["status"] = "incomplete";
+            await Throws(() => { lab.VerifyRetrieval(stringEvidence); return Task.CompletedTask; }, "incomplete response cannot verify");
         }
         await ConsoleFlow();
         Console.WriteLine("PASS C# lab 03: wire shapes, auth hops, stable names/version pins, MCP JSON/SSE/pagination/errors, no approvals/follow-up, retrieval guards (offline).");
@@ -90,7 +121,7 @@ public static class ToolboxTests
         var mcp = requests.Where(r => r.Path.EndsWith("/mcp")).ToArray();
         Check(mcp.Length == 5 && mcp.All(r => r.Url == url), "exact immutable toolbox endpoint");
         Check(mcp[0].Session == null && mcp.Skip(1).All(r => r.Session == "synthetic-session"
-            && r.Protocol == "2025-06-18"), "MCP session/protocol forwarding");
+            && r.Protocol == handler.Protocol), "MCP session/protocol forwarding");
         Check(mcp[1].Body!["id"] == null && (string?)mcp[3].Body!["params"]!["cursor"] == "next", "notification and cursor");
         var arm = requests.Single(r => r.Method == "PUT");
         Check(arm.Path.EndsWith("/connections/alice01-webiq-toolbox-connection")
@@ -175,6 +206,7 @@ public sealed class ToolboxOfflineHandler : HttpMessageHandler
         string? Session, string? Protocol, JsonObject? Body);
     public readonly List<Request> Requests = new();
     public string Mode = "complete";
+    public string Protocol = "2025-06-18";
     public bool Sse, DefaultAlreadySelected;
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
@@ -195,7 +227,7 @@ public sealed class ToolboxOfflineHandler : HttpMessageHandler
             if (request.Method == HttpMethod.Delete) return Reply(200, "{}");
             if ((string?)body!["method"] == "notifications/initialized") return Reply(202, "");
             JsonObject result = (string?)body["method"] == "initialize"
-                ? new JsonObject { ["protocolVersion"] = "2025-06-18", ["capabilities"] = new JsonObject() }
+                ? new JsonObject { ["protocolVersion"] = Protocol, ["capabilities"] = new JsonObject() }
                 : body["params"]?["cursor"] == null
                     ? new JsonObject { ["tools"] = new JsonArray(new JsonObject { ["name"] = "webiq___web" }), ["nextCursor"] = "next" }
                     : new JsonObject
@@ -207,7 +239,7 @@ public sealed class ToolboxOfflineHandler : HttpMessageHandler
             var message = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = body["id"]!.DeepClone() };
             if (Mode == "rpc-error") message["error"] = new JsonObject { ["code"] = -32000, ["message"] = "synthetic-token" };
             else message["result"] = result;
-            var reply = Sse ? Reply(200, "event: message\ndata: " + message.ToJsonString() + "\n\n", "text/event-stream")
+            var reply = Sse ? Reply(200, "id: prime\ndata:\n\n" + "event: message\ndata: " + message.ToJsonString() + "\n\n", "text/event-stream")
                 : Reply(200, message.ToJsonString());
             if ((string?)body["method"] == "initialize") reply.Headers.Add("Mcp-Session-Id", "synthetic-session");
             return reply;

@@ -167,6 +167,8 @@ public sealed class ToolboxWorkshop
 
     public bool VerifyRetrieval(JsonObject response)
     {
+        if (Text(response["status"]) != "completed")
+            throw new InvalidOperationException("No completed agent response to verify.");
         JsonNode?[] calls = (response["output"] as JsonArray ?? new JsonArray())
             .Where(item => Text(item?["type"]) == "mcp_call").ToArray();
         foreach (JsonNode? call in calls)
@@ -196,7 +198,18 @@ public sealed class ToolboxWorkshop
         await transport.SendJsonAsync(method, url, "https://ai.azure.com/", body)
         ?? throw new InvalidOperationException("Foundry request failed. Resolve the error before continuing; no automatic retry or follow-up was made.");
 
-    private static bool IsEmpty(JsonNode? node) => node == null || Text(node) is "" or "false" or "[]" or "{}" or "0";
+    private static bool IsEmpty(JsonNode? node)
+    {
+        if (node == null) return true;
+        if (node is JsonArray array) return array.Count == 0;
+        if (node is JsonObject obj) return obj.Count == 0;
+        if (node is JsonValue value)
+        {
+            if (value.TryGetValue<string>(out string? text)) return string.IsNullOrEmpty(text);
+            if (value.TryGetValue<bool>(out bool boolean)) return !boolean;
+        }
+        return node.ToJsonString() == "0";
+    }
     private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out string? text)
         ? text : node?.ToJsonString();
     private static string Required(JsonObject node, string property) => !string.IsNullOrEmpty(Text(node[property]))

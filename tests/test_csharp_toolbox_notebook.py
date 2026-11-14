@@ -1,6 +1,7 @@
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import unittest
@@ -75,9 +76,9 @@ class CSharpToolboxNotebookTests(unittest.TestCase):
         nbformat.validate(cls.notebook)
         cls.instructions, cls.question = python_policy()
 
-    def execute(self, mode="complete", checks=""):
+    def execute(self, mode="complete", checks="", protocol="2025-06-18"):
         source = (ROOT / "tests" / "c-sharp-toolbox" / "ToolboxTests.cs").read_text(encoding="utf-8")
-        handler = source[source.index("public sealed class ToolboxOfflineHandler"):]
+        handler = "using System.Net;\n" + source[source.index("public sealed class ToolboxOfflineHandler"):]
         handler = handler.replace("ToolboxTests.Settings.ConnectionId", json.dumps(PROJECT_ID + "/connections/alice01-webiq-mcp"))
         wire_checks = method(source, "public static void AssertWire")
         wire_checks = wire_checks.replace("ToolboxWorkshop.Question", json.dumps(self.question))
@@ -97,7 +98,7 @@ ToolboxOfflineHandler handler = new ToolboxOfflineHandler();
 client = new HttpClient(handler);
 lab = new FoundryWorkshop(client, settings, resource => Task.FromResult("synthetic-token"));
 tokenProvider = resource => Task.FromResult("synthetic-token");
-handler.Mode = """ + json.dumps(mode) + ";"
+handler.Mode = """ + json.dumps(mode) + ";\nhandler.Protocol = " + json.dumps(protocol) + ";"
         return notebook_runner.CSharpNotebookTests.execute(self, handler, checks)
 
     def test_actual_standalone_cells_match_python_and_both_wire_auth_hops(self):
@@ -113,14 +114,24 @@ NotebookWireTests.AssertWire(handler);
                 os.environ["WEBIQ_API_KEY"] = original_key
         self.assertEqual(self.notebook_path.read_bytes(), self.original_bytes)
 
+    def test_actual_foundry_protocol_downgrade(self):
+        self.execute(protocol="2024-11-05", checks=r'''
+if (availableTools.Count != 2 || !grounded)
+    throw new Exception("Foundry downgrade discovery did not complete");
+NotebookWireTests.AssertWire(handler);
+''')
+        self.assertEqual(self.notebook_path.read_bytes(), self.original_bytes)
+
     def test_actual_missing_news_stops_notebook(self):
-        with self.assertRaisesRegex(CellExecutionError, "webiq___news"):
+        with self.assertRaises(CellExecutionError) as caught:
             self.execute("missing-news")
+        self.assertIn("MCP does not expose webiq___news", caught.exception.evalue)
         self.assertEqual(self.notebook_path.read_bytes(), self.original_bytes)
 
     def test_actual_unexpected_approval_raises_without_prompt(self):
-        with self.assertRaisesRegex(CellExecutionError, "Unexpected tool approval request"):
+        with self.assertRaises(CellExecutionError) as caught:
             self.execute("approval")
+        self.assertIn("Unexpected tool approval request", caught.exception.evalue)
         self.assertEqual(self.notebook_path.read_bytes(), self.original_bytes)
 
 
@@ -128,12 +139,14 @@ class CSharpToolboxPolicyTests(unittest.TestCase):
     def test_current_python_instructions_question_and_sdk_toolbox_wire_shape(self):
         # Optional Azure SDK is already present in the workshop environment; never install it in tests.
         from azure.ai.projects.models import MCPToolboxTool
+        from mcp.shared.version import SUPPORTED_PROTOCOL_VERSIONS
         from azure.ai.projects.operations._operations import (
             build_toolboxes_create_version_request,
             build_toolboxes_get_request,
             build_toolboxes_update_request,
         )
         instructions, question = python_policy()
+        self.assertEqual(SUPPORTED_PROTOCOL_VERSIONS, ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"])
         notebook = nbformat.read(ROOT / "c-sharp-notebooks" / "03-foundry-web-iq-toolbox.ipynb", as_version=4)
         nbformat.validate(notebook)
         sources = {cell.id: cell.source for cell in notebook.cells}
@@ -141,10 +154,8 @@ class CSharpToolboxPolicyTests(unittest.TestCase):
         self.assertIn(json.dumps(question), sources["ask"])
         helper = (ROOT / "c-sharp-console-apps" / "03-foundry-web-iq-toolbox" / "ToolboxWorkshop.cs").read_text(encoding="utf-8")
         def constant(name):
-            region = helper.split(f"public const string {name} =", 1)[1].split(";", 1)[0]
-            # The instruction text itself contains semicolons, so locate the terminating statement.
+            # Instruction text contains semicolons; locate the terminating string statement.
             region = helper.split(f"public const string {name} =", 1)[1].split('";', 1)[0] + '"'
-            import re
             return "".join(json.loads(literal) for literal in re.findall(r'"(?:[^"\\]|\\.)*"', region))
         self.assertEqual(constant("Instructions"), instructions)
         self.assertEqual(constant("Question"), question)

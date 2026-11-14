@@ -183,8 +183,12 @@ public sealed class FoundryWorkshop
             if (initialized == null)
                 return DiscoveryFailed();
             protocol = Text(initialized["protocolVersion"]);
-            if (protocol != "2025-06-18" && protocol != "2025-03-26")
-                throw new InvalidOperationException("The discovery helper does not support the negotiated MCP protocol version.");
+            // Same negotiated versions as mcp.shared.version.SUPPORTED_PROTOCOL_VERSIONS.
+            // A successful POST initialize identifies Streamable HTTP even when the server negotiates 2024-11-05.
+            // This helper does not implement the legacy separate GET/SSE + POST transport.
+            if (protocol is not ("2024-11-05" or "2025-03-26" or "2025-06-18" or "2025-11-25"))
+                throw new InvalidOperationException("Unsupported negotiated MCP protocol version: " + (protocol ?? "<missing>")
+                    + ". Supported discovery versions: 2024-11-05, 2025-03-26, 2025-06-18, 2025-11-25 (Streamable HTTP).");
             if (await SendAsync("notifications/initialized", notification: true) == null)
                 return DiscoveryFailed();
             var tools = new JsonArray();
@@ -269,13 +273,16 @@ public sealed class FoundryWorkshop
             string? line = await reader.ReadLineAsync(token);
             if (line == null || line.Length == 0)
             {
-                if (data.Length != 0)
+                // Newer Streamable HTTP servers may prime SSE with an event ID and empty data.
+                if (!string.IsNullOrWhiteSpace(data.ToString()))
                 {
                     JsonObject? reply = MatchingReply(data.ToString());
                     if (reply != null)
                         return reply;
                     data.Clear();
                 }
+                else
+                    data.Clear();
                 if (line == null)
                     throw new InvalidOperationException("MCP stream ended before a matching response.");
             }
