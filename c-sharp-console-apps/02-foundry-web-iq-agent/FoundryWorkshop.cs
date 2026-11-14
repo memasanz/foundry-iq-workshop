@@ -36,21 +36,23 @@ public sealed class FoundrySettings
         TenantId = tenantId;
     }
 
-    public static FoundrySettings Load(string directory, bool requireAzure = true)
+    public static FoundrySettings Load(string directory, bool requireAzure = true, bool requireApiKey = true)
     {
         Workshop.LoadEnvFile(Path.Combine(directory, ".env"));
         Workshop.LoadEnvFile(Path.Combine(directory, ".env.azure"));
         string[] required = requireAzure
             ? new[] { "AZURE_AI_PROJECT_ENDPOINT", "AZURE_AI_PROJECT_RESOURCE_ID",
-                "AZURE_AI_MODEL_DEPLOYMENT_NAME", "AZURE_TENANT_ID", "WEBIQ_API_KEY", "WORKSHOP_PREFIX" }
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME", "AZURE_TENANT_ID", "WORKSHOP_PREFIX" }
             : new[] { "WEBIQ_API_KEY" };
+        if (requireAzure && requireApiKey)
+            required = required.Append("WEBIQ_API_KEY").ToArray();
         string[] missing = required.Where(name =>
             string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))).ToArray();
         if (missing.Length != 0)
             throw new InvalidOperationException("Missing settings: " + string.Join(", ", missing)
                 + ". Configure .env and .env.azure before running.");
         string Get(string name) => (Environment.GetEnvironmentVariable(name) ?? "").Trim();
-        var settings = new FoundrySettings(Get("WEBIQ_API_KEY"), Get("WORKSHOP_PREFIX"),
+        var settings = new FoundrySettings(requireApiKey ? Get("WEBIQ_API_KEY") : "", Get("WORKSHOP_PREFIX"),
             Get("AZURE_AI_PROJECT_ENDPOINT"), Get("AZURE_AI_PROJECT_RESOURCE_ID"),
             Get("AZURE_AI_MODEL_DEPLOYMENT_NAME"), Get("AZURE_TENANT_ID"));
         if (requireAzure)
@@ -67,7 +69,8 @@ public sealed class FoundrySettings
                 RegexOptions.IgnoreCase))
                 throw new InvalidOperationException("AZURE_AI_PROJECT_RESOURCE_ID must identify the Foundry project, not its account.");
         }
-        Console.WriteLine("Configuration loaded. The API key will not be displayed.");
+        Console.WriteLine(requireApiKey ? "Configuration loaded. The API key will not be displayed."
+            : "Configuration loaded. Lab 03 does not read or require a Web IQ API key.");
         return settings;
     }
 }
@@ -111,13 +114,19 @@ public sealed class FoundryWorkshop
         ["instructions"] = Instructions,
         ["tools"] = new JsonArray(new JsonObject
         {
-            ["type"] = "mcp", ["server_label"] = "webiq", ["server_url"] = McpUrl,
-            ["allowed_tools"] = new JsonArray("web", "browse"), ["require_approval"] = "never",
+            ["type"] = "mcp",
+            ["server_label"] = "webiq",
+            ["server_url"] = McpUrl,
+            ["allowed_tools"] = new JsonArray("web", "browse"),
+            ["require_approval"] = "never",
         }),
     };
 
-    public async Task<JsonArray?> DiscoverToolsAsync()
+    public async Task<JsonArray?> DiscoverToolsAsync(string? endpoint = null, string? bearerToken = null,
+        string[]? requiredTools = null)
     {
+        string url = endpoint ?? McpUrl;
+        requiredTools ??= new[] { "web" };
         string? sessionId = null;
         string? protocol = null;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -129,8 +138,11 @@ public sealed class FoundryWorkshop
                 message["id"] = id;
             if (parameters != null)
                 message["params"] = parameters;
-            using var request = new HttpRequestMessage(HttpMethod.Post, McpUrl);
-            request.Headers.Add("x-apikey", settings.ApiKey);
+            using var request = new HttpRequestMessage(HttpMethod.Post, url);
+            if (bearerToken != null)
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            else
+                request.Headers.Add("x-apikey", settings.ApiKey);
             request.Headers.Accept.ParseAdd("application/json, text/event-stream");
             if (sessionId != null)
                 request.Headers.Add("Mcp-Session-Id", sessionId);
@@ -141,7 +153,8 @@ public sealed class FoundryWorkshop
                 request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
             if (!response.IsSuccessStatusCode)
             {
-                PrintHttpError(response, await response.Content.ReadAsStringAsync(timeout.Token));
+                string errorBody = await response.Content.ReadAsStringAsync(timeout.Token);
+                PrintHttpError(response, bearerToken == null ? errorBody : errorBody.Replace(bearerToken, "<redacted>"));
                 return null;
             }
             if (response.Headers.TryGetValues("Mcp-Session-Id", out var values))
@@ -151,7 +164,9 @@ public sealed class FoundryWorkshop
             JsonObject reply = await ReadMcpReplyAsync(response, id, timeout.Token);
             if (reply["error"] != null)
             {
-                Console.WriteLine("MCP error: " + SafeText(reply["error"]!.ToJsonString(), 8000));
+                string errorText = reply["error"]!.ToJsonString();
+                Console.WriteLine("MCP error: " + SafeText(bearerToken == null ? errorText
+                    : errorText.Replace(bearerToken, "<redacted>"), 8000));
                 return null;
             }
             return reply["result"] as JsonObject
@@ -161,7 +176,8 @@ public sealed class FoundryWorkshop
         {
             JsonObject? initialized = await SendAsync("initialize", new JsonObject
             {
-                ["protocolVersion"] = "2025-06-18", ["capabilities"] = new JsonObject(),
+                ["protocolVersion"] = "2025-06-18",
+                ["capabilities"] = new JsonObject(),
                 ["clientInfo"] = new JsonObject { ["name"] = "webiq-workshop-csharp", ["version"] = "1.0" },
             });
             if (initialized == null)
@@ -189,8 +205,10 @@ public sealed class FoundryWorkshop
             } while (!string.IsNullOrEmpty(cursor));
             foreach (JsonNode? tool in tools)
                 Console.WriteLine(Text(tool?["name"]) + " - " + Text(tool?["description"]));
-            if (!tools.Any(tool => Text(tool?["name"]) == "web"))
-                throw new InvalidOperationException("The Web IQ profile does not expose web search. Request access before continuing.");
+            string[] missing = requiredTools.Where(name => !tools.Any(tool => Text(tool?["name"]) == name)).ToArray();
+            if (missing.Length != 0)
+                throw new InvalidOperationException("MCP does not expose " + string.Join(", ", missing)
+                    + ". Check the Web IQ profile, connection and toolbox version before continuing.");
             return tools;
         }
         catch (Exception error) when (error is HttpRequestException or IOException or OperationCanceledException)
@@ -205,8 +223,11 @@ public sealed class FoundryWorkshop
                 try
                 {
                     using var closeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                    using var request = new HttpRequestMessage(HttpMethod.Delete, McpUrl);
-                    request.Headers.Add("x-apikey", settings.ApiKey);
+                    using var request = new HttpRequestMessage(HttpMethod.Delete, url);
+                    if (bearerToken != null)
+                        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+                    else
+                        request.Headers.Add("x-apikey", settings.ApiKey);
                     request.Headers.Add("Mcp-Session-Id", sessionId);
                     if (protocol != null)
                         request.Headers.Add("MCP-Protocol-Version", protocol);
@@ -274,8 +295,10 @@ public sealed class FoundryWorkshop
         {
             ["properties"] = new JsonObject
             {
-                ["category"] = "RemoteTool", ["authType"] = "CustomKeys",
-                ["target"] = McpUrl, ["isSharedToAll"] = true,
+                ["category"] = "RemoteTool",
+                ["authType"] = "CustomKeys",
+                ["target"] = McpUrl,
+                ["isSharedToAll"] = true,
                 ["credentials"] = new JsonObject { ["keys"] = new JsonObject { ["x-apikey"] = settings.ApiKey } },
                 ["metadata"] = new JsonObject { ["ApiType"] = "Azure" },
             },
@@ -346,11 +369,13 @@ public sealed class FoundryWorkshop
     {
         var body = new JsonObject
         {
-            ["conversation"] = RequiredText(conversation, "id"), ["input"] = question,
+            ["conversation"] = RequiredText(conversation, "id"),
+            ["input"] = question,
             ["agent_reference"] = new JsonObject
             {
                 ["type"] = "agent_reference",
-                ["name"] = RequiredText(agent, "name"), ["version"] = RequiredText(agent, "version"),
+                ["name"] = RequiredText(agent, "name"),
+                ["version"] = RequiredText(agent, "version"),
             },
         };
         JsonObject? response = await SendJsonAsync(HttpMethod.Post,
@@ -408,7 +433,7 @@ public sealed class FoundryWorkshop
         .Where(content => Text(content?["type"]) == "output_text")
         .Select(content => Text(content?["text"]) ?? ""));
 
-    private async Task<JsonObject?> SendJsonAsync(HttpMethod method, string url, string resource, JsonObject? body = null)
+    public async Task<JsonObject?> SendJsonAsync(HttpMethod method, string url, string resource, JsonObject? body = null)
     {
         try
         {
@@ -456,7 +481,7 @@ public sealed class FoundryWorkshop
 
     private string SafeText(string text, int limit)
     {
-        string safe = text.Replace(settings.ApiKey, "<redacted>");
+        string safe = string.IsNullOrEmpty(settings.ApiKey) ? text : text.Replace(settings.ApiKey, "<redacted>");
         return safe.Substring(0, Math.Min(safe.Length, limit));
     }
 
@@ -466,12 +491,14 @@ public sealed class FoundryWorkshop
     private static string RequiredText(JsonObject value, string property) => Text(value[property])
         ?? throw new InvalidOperationException("Service response omitted " + property + ".");
 
-    private async Task<string> GetAzureCliTokenAsync(string resource)
+    public async Task<string> GetAzureCliTokenAsync(string resource)
     {
         var start = new ProcessStartInfo
         {
             FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "az",
-            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
             CreateNoWindow = true,
         };
         if (OperatingSystem.IsWindows())
