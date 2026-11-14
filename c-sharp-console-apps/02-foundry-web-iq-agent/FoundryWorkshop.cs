@@ -70,7 +70,7 @@ public sealed class FoundrySettings
                 throw new InvalidOperationException("AZURE_AI_PROJECT_RESOURCE_ID must identify the Foundry project, not its account.");
         }
         Console.WriteLine(requireApiKey ? "Configuration loaded. The API key will not be displayed."
-            : "Configuration loaded. Lab 03 does not read or require a Web IQ API key.");
+            : "Configuration loaded. This command does not read or require a Web IQ API key.");
         return settings;
     }
 }
@@ -341,15 +341,36 @@ public sealed class FoundryWorkshop
         JsonNode? definition = agent?["definition"];
         JsonArray? tools = definition?["tools"] as JsonArray;
         JsonNode? tool = tools?.Count == 1 ? tools[0] : null;
-        JsonArray allowed = toolboxUrl == null ? new JsonArray("web", "browse") : new JsonArray("webiq___web", "webiq___news");
-        if (Text(agent?["name"]) != name || Text(agent?["version"]) != RequiredText(reference, "version")
-            || Text(definition?["kind"]) != "prompt" || Text(definition?["model"]) != settings.Model
-            || Text(definition?["instructions"]) != (expectedInstructions ?? Instructions)
-            || Text(tool?["type"]) != "mcp" || Text(tool?["server_label"]) != (toolboxUrl == null ? "webiq" : "webiq_toolbox")
-            || Text(tool?["server_url"]) != (toolboxUrl ?? McpUrl)
-            || Text(tool?["project_connection_id"]) != (toolboxConnectionName ?? settings.ConnectionId)
-            || Text(tool?["require_approval"]) != "never" || !JsonNode.DeepEquals(tool?["allowed_tools"], allowed))
-            throw new InvalidOperationException("Pinned agent is missing or its model, instructions, endpoint, connection or policy differs. Run agent again before asking.");
+        string[] allowed = toolboxUrl == null ? new[] { "web", "browse" } : new[] { "webiq___web", "webiq___news" };
+        var differences = new List<string>();
+        void Check(string field, bool matches)
+        {
+            if (!matches) differences.Add(field);
+        }
+        Check("name", Text(agent?["name"]) == name);
+        Check("version", Text(agent?["version"]) == RequiredText(reference, "version"));
+        Check("kind", Text(definition?["kind"]) == "prompt");
+        Check("model", Text(definition?["model"]) == settings.Model);
+        Check("instructions", Text(definition?["instructions"]) == (expectedInstructions ?? Instructions));
+        Check("tools", tools?.Count == 1);
+        Check("type", Text(tool?["type"]) == "mcp");
+        Check("server_label", Text(tool?["server_label"]) == (toolboxUrl == null ? "webiq" : "webiq_toolbox"));
+        Check("server_url", Text(tool?["server_url"]) == (toolboxUrl ?? McpUrl));
+        Check("project_connection_id", Text(tool?["project_connection_id"]) == (toolboxConnectionName ?? settings.ConnectionId));
+        Check("require_approval", Text(tool?["require_approval"]) == "never");
+        Check("allowed_tools", HasAllowedTools(tool?["allowed_tools"], allowed));
+        if (differences.Count != 0)
+            throw new InvalidOperationException("Pinned agent is missing or its configuration differs: "
+                + string.Join(", ", differences) + ". Run agent again before asking.");
+    }
+
+    public static bool HasAllowedTools(JsonNode? policy, params string[] expected)
+    {
+        // Foundry can normalize the submitted array into an MCP tool filter on read.
+        if (policy is JsonObject filter)
+            policy = filter.Count == 1 ? filter["tool_names"] : null;
+        return policy is JsonArray names && names.Count == expected.Length
+            && expected.All(name => names.Any(item => Text(item) == name));
     }
 
     public async Task<JsonObject?> CreateAgentVersionAsync(JsonObject definition)

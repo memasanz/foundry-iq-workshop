@@ -101,7 +101,7 @@ public sealed class ToolboxWorkshop
             || Text(tool?["server_label"]) != "webiq" || Text(tool?["server_url"]) != FoundryWorkshop.McpUrl
             || Text(tool?["project_connection_id"]) != Required(original, "id")
             || Text(tool?["require_approval"]) != "never"
-            || !JsonNode.DeepEquals(tool?["allowed_tools"], new JsonArray("web", "news")))
+            || !FoundryWorkshop.HasAllowedTools(tool?["allowed_tools"], "web", "news"))
             throw new InvalidOperationException("Selected toolbox version is missing or its Web IQ source/policy differs. Run toolbox then discover again.");
     }
 

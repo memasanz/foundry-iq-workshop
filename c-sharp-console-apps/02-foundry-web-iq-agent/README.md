@@ -49,6 +49,18 @@ dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- run 'Find
 
 Like lab 01's separate API commands, these commands run only the named step and necessary metadata reads:
 
+| Command | What happens | Result |
+|---|---|---|
+| `discover` | Connect directly to Web IQ with your profile key and list its MCP tools, descriptions and input schemas. No search or agent call runs. | Shows the available tools; no Azure resources are created. |
+| `connection` | Create or update `<prefix>-webiq-mcp` in Foundry, storing the profile key so Foundry can authenticate future Web IQ calls. | An authenticated Web IQ project connection, also reusable by lab 03. |
+| `agent` | Check the existing connection and prepare a prompt-agent version configured to use Web IQ's `web` and `browse` tools without approval prompts. | Saves the exact agent name/version for later question commands; no question runs yet. |
+| `ask [public question]` | Create a conversation and send one question to the saved agent version through the Responses API. Print its answer and check for successful MCP retrieval. | An answer plus saved conversation references. Model/tool calls incur charges; there is no automatic follow-up. |
+| `follow-up [public question]` | Send another question using the same conversation and pinned agent version, preserving the earlier conversation context. Requires a completed previous response. | Another answer and retrieval check; model/tool calls incur charges. |
+| `run [public question]` | Execute the full discovery, connection, agent, initial-question and follow-up workflow in one command. | The complete lab, including the automatic billable follow-up. Separate step commands are not prerequisites. |
+
+In short: **discover what Web IQ offers -> give Foundry access -> configure an agent -> ask -> follow up**.
+Creating the connection or agent does not itself run a Web IQ search.
+
 ```powershell
 dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- discover
 dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- connection
@@ -57,7 +69,7 @@ dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- ask
 dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- follow-up
 ```
 
-`connection` only creates/updates the API-key connection. `agent` checks that connection and publishes/reuses an agent version without modifying the connection or discovering tools. `ask [public question]` checks the existing connection and exact pinned agent policy/model, creates a new conversation and asks/verifies **once**. `follow-up [public question]` uses the stored conversation and **same immutable agent version**, only after a completed initial response. Default questions match the full run.
+`agent` does not modify the connection or rediscover tools. Before asking, `ask` and `follow-up` validate the existing connection and exact pinned agent policy/model. Default questions match the full run. Retrieval checks show that tools returned evidence, not that every claim is correct; review the cited sources yourself.
 
 Only `discover`, `connection` and `run` read/require `WEBIQ_API_KEY`. The other steps need the Azure settings and prefix but use the already provisioned connection. Missing/stale prerequisites stop before any billable response; commands never replay earlier steps or silently repair resources. `run` retains its original automatic follow-up and does not read or populate the step cache.
 

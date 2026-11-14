@@ -14,6 +14,20 @@ Complete lab 02's connection setup first. Load `.env`, then `.env.azure` (file v
 
 ## Run one step at a time
 
+| Command | What happens | Result |
+|---|---|---|
+| `webiq-connection` | Read lab 02's `<prefix>-webiq-mcp` connection metadata and check that it points to Web IQ. The stored API key is not fetched or changed. | Confirms that the toolbox's downstream Web IQ connection is ready; creates nothing. |
+| `toolbox` | Publish a version of `<prefix>-webiq-toolbox` containing Web IQ's `web` and `news` tools, using the existing key connection and automatic approvals. Make that version the default. | A reusable toolbox version; no search or agent call runs. |
+| `discover` | Read the existing default toolbox version, authenticate to its MCP endpoint with Entra, and list its tools. Require `webiq___web` and `webiq___news`. | Shows the tools and saves the selected toolbox version locally; does not publish a version or run a search. |
+| `toolbox-connection` | Create or update `<prefix>-webiq-toolbox-connection`, pointing at the selected toolbox version with `UserEntraToken` authentication. This is not another toolbox or another Web IQ key connection. | Gives the prompt agent an authenticated route to the existing toolbox. |
+| `agent` | Check that the toolbox connection matches the selected version, then publish `<prefix>-webiq-toolbox-agent` with the namespaced web/news tools and automatic approvals. | Saves a pinned agent version; the agent points to Foundry's toolbox, not directly to Web IQ. |
+| `ask [public question]` | Validate the pinned resources, create a conversation, and ask the agent once through the Responses API. Check for successful web or news retrieval and an answer containing a source URL. | An answer with retrieval diagnostics. Model/tool calls incur charges; no automatic follow-up runs. |
+| `run [public question]` | Execute the complete connection check, toolbox publication, discovery, toolbox-connection setup, agent creation and question workflow. | The full lab in one command; separate step commands are not prerequisites. |
+
+In short: **check Web IQ access -> package tools -> inspect them -> connect the prompt agent to the toolbox -> configure the agent -> ask**.
+The two authentication hops remain separate: **agent -> toolbox uses Entra; toolbox -> Web IQ uses lab 02's stored profile key**.
+Setup and discovery do not execute searches; the `ask` step is where the agent can call the tools.
+
 ```powershell
 dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- webiq-connection
 dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- toolbox

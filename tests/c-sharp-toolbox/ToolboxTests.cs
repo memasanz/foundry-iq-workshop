@@ -356,7 +356,7 @@ public sealed class ToolboxOfflineHandler : HttpMessageHandler
                     ["server_label"] = "webiq",
                     ["server_url"] = FoundryWorkshop.McpUrl,
                     ["project_connection_id"] = ToolboxTests.Settings.ConnectionId,
-                    ["allowed_tools"] = new JsonArray("web", "news"),
+                    ["allowed_tools"] = new JsonObject { ["tool_names"] = new JsonArray("news", "web") },
                     ["require_approval"] = "never",
                 })
             }.ToJsonString());
@@ -400,7 +400,7 @@ public sealed class ToolboxOfflineHandler : HttpMessageHandler
                         ["server_label"] = "webiq_toolbox",
                         ["server_url"] = "https://workshop.services.ai.azure.com/api/projects/workshop/toolboxes/alice01-webiq-toolbox/versions/7/mcp?api-version=v1",
                         ["project_connection_id"] = "alice01-webiq-toolbox-connection",
-                        ["allowed_tools"] = new JsonArray("webiq___web", "webiq___news"),
+                        ["allowed_tools"] = new JsonObject { ["tool_names"] = new JsonArray("webiq___news", "webiq___web") },
                         ["require_approval"] = Mode == "stale-agent" ? "always" : "never",
                     }),
                 }

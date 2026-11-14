@@ -13,9 +13,47 @@ public static class LabTests
     {
         await Discovery();
         await AgentFlow();
+        await AgentValidation();
         await RuntimeFailures();
         await ConsoleFlow();
         Console.WriteLine("PASS C# lab 02: MCP JSON/SSE/session/pagination, ARM connection, agent reuse, Responses, errors and follow-up (offline).");
+    }
+
+    private static async Task AgentValidation()
+    {
+        JsonObject reference = new() { ["name"] = "alice01-webiq-agent", ["version"] = "2" };
+        foreach (JsonNode policy in new JsonNode[]
+        {
+            new JsonArray("web", "browse"),
+            new JsonObject { ["tool_names"] = new JsonArray("browse", "web") },
+        })
+        {
+            using var handler = new Handler { AllowedTools = policy };
+            using var client = new HttpClient(handler);
+            await new FoundryWorkshop(client, Settings, _ => Task.FromResult("token")).ValidateAgentVersionAsync(reference);
+            Check(handler.Requests.Count == 1 && handler.Requests[0].Method == "GET", "normalized allowlist accepted without writes");
+        }
+        foreach (JsonNode policy in new JsonNode[]
+        {
+            new JsonObject { ["tool_names"] = new JsonArray("web", "news") },
+            new JsonObject { ["tool_names"] = new JsonArray("web", "web") },
+            new JsonObject { ["tool_names"] = new JsonArray("web", "browse", "news") },
+            new JsonObject { ["tool_names"] = new JsonArray("web", "browse"), ["unknown_filter"] = true },
+            JsonValue.Create("all")!,
+        })
+        {
+            using var handler = new Handler { AllowedTools = policy };
+            using var client = new HttpClient(handler);
+            try
+            {
+                await new FoundryWorkshop(client, Settings, _ => Task.FromResult("token")).ValidateAgentVersionAsync(reference);
+                throw new Exception("FAIL: changed allowlist accepted");
+            }
+            catch (InvalidOperationException error)
+            {
+                Check(error.Message.Contains("allowed_tools"), "changed allowlist diagnostic identifies the field");
+            }
+        }
     }
 
     private static async Task Discovery()
@@ -360,6 +398,7 @@ public static class LabTests
         public int DiscoveryStatus = 200, ConnectionStatus = 200;
         public string AgentMode = "new", ResponseMode = "complete";
         public bool StaleAgent;
+        public JsonNode? AllowedTools;
         private static string? Header(HttpRequestMessage request, string name) =>
             request.Headers.TryGetValues(name, out var values) ? values.Single() : null;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
@@ -415,6 +454,8 @@ public static class LabTests
             {
                 JsonObject definition = FoundryWorkshop.CreateDefinition(Settings.Model);
                 definition["tools"]![0]!["project_connection_id"] = Settings.ConnectionId;
+                definition["tools"]![0]!["allowed_tools"] = AllowedTools?.DeepClone()
+                    ?? new JsonObject { ["tool_names"] = new JsonArray("web", "browse") };
                 if (StaleAgent) definition["tools"]![0]!["require_approval"] = "always";
                 return Reply(200, new JsonObject
                 {
