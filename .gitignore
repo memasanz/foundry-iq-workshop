@@ -10,3 +10,7 @@ __pycache__/
 *-hosted-agent-iq/
 infra/*.json
 attendees.txt
+c-sharp-console-apps/**/bin/
+c-sharp-console-apps/**/obj/
+tests/c-sharp/**/bin/
+tests/c-sharp/**/obj/

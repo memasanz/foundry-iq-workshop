@@ -1,3 +1,4 @@
+import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,25 @@ class NotebookRunnerTests(unittest.TestCase):
         result = self.run_notebooks(first, second)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS second.ipynb", result.stdout)
+
+    def test_repository_notebooks_run_from_their_own_directory(self):
+        spec = importlib.util.spec_from_file_location("notebook_runner", RUNNER)
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        runner.ROOT = self.path
+        notebook_directory = self.path / "python-notebooks"
+        notebook_directory.mkdir()
+        notebook = notebook_directory / "01-layout-check.ipynb"
+        (self.path / ".env").write_text("WORKSHOP_LAYOUT_MARKER=parent-settings\n", encoding="utf-8")
+        nbformat.write(nbformat.v4.new_notebook(cells=[nbformat.v4.new_code_cell(
+            "import os\nfrom pathlib import Path\nfrom dotenv import load_dotenv\n"
+            f"assert Path.cwd() == Path({str(notebook_directory)!r})\n"
+            "load_dotenv(r'..\\.env', override=True)\n"
+            "assert os.environ['WORKSHOP_LAYOUT_MARKER'] == 'parent-settings'"
+        )]), notebook)
+        self.output_dir.mkdir()
+        self.assertTrue(runner.run_notebook(notebook, self.output_dir, 30))
+        self.assertEqual(runner.notebook_working_directory(self.path / "other.ipynb"), self.path)
 
 
 if __name__ == "__main__":

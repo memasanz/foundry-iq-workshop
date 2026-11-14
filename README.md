@@ -1,6 +1,8 @@
 # Azure IQ workshop
 
-Build agents that search the web and answer questions over your own documents. These hands-on Python notebooks start with direct API calls, then introduce agents, search indexes, SharePoint permissions and Foundry IQ.
+Build agents that search the web and answer questions over your own documents. These hands-on labs start with direct API calls, then introduce agents, search indexes, SharePoint permissions and Foundry IQ.
+
+**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore lab 01 in an optional [Polyglot Notebook](c-sharp-notebooks/01-web-iq-apis.dib) or a [.NET 10 console app](c-sharp-console-apps/01-web-iq-apis). Polyglot Notebooks uses deprecated tooling; the console app is the supported C# option. See [language setup](#choose-your-language) below.
 
 You can take one track or work through the whole workshop. The notebooks show the requests and responses directly, so you can see how the pieces fit together.
 
@@ -38,9 +40,9 @@ Start with **01 -> 02 -> 03**. Allow roughly 2-3 hours, including setup and disc
 
 | Notebook | Time | What you will do |
 |---|---|---|
-| [01 - Web IQ APIs](notebooks/01-web-iq-apis.ipynb) | 40-55 min | Try Web Search, Browse, News, Images and Videos; inspect results and source attribution. |
-| [02 - Foundry agent + Web IQ](notebooks/02-foundry-web-iq-agent.ipynb) | 35 min | Create or update a Web IQ agent, run searches without approval prompts, and inspect its answers. |
-| [03 - Foundry agent + Web IQ toolbox](notebooks/03-foundry-web-iq-toolbox.ipynb) | 30-40 min | Reuse notebook 02's connection through a toolbox: a reusable collection of tools for agents. |
+| [01 - Web IQ APIs](python-notebooks/01-web-iq-apis.ipynb) | 40-55 min | Try Web Search, Browse, News, Images and Videos; inspect results and source attribution. |
+| [02 - Foundry agent + Web IQ](python-notebooks/02-foundry-web-iq-agent.ipynb) | 35 min | Create or update a Web IQ agent, run searches without approval prompts, and inspect its answers. |
+| [03 - Foundry agent + Web IQ toolbox](python-notebooks/03-foundry-web-iq-toolbox.ipynb) | 30-40 min | Reuse notebook 02's connection through a toolbox: a reusable collection of tools for agents. |
 
 ### Track 2: Your documents and Foundry IQ
 
@@ -48,18 +50,18 @@ Compare **04, 05 and 06**: text splitting in an indexer, PDF extraction/chunking
 
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|
-| [04 - Blob indexer and skills](notebooks/04-blob-indexer-skills.ipynb) | 45-60 min | Let Search read Blob files, split text and generate embeddings. Compare keyword, vector, hybrid and semantic-ranked search. |
-| [05 - Blob + Content Understanding](notebooks/05-blob-content-understanding.ipynb) | 45-60 min | Extract an original two-page PDF as Markdown, chunk and embed it, then retrieve evidence with page ranges. Uses a separate index and billable Content Understanding. |
-| [06 - Chunk, embed and push](notebooks/06-push-chunks-vectors.ipynb) | 35-45 min | Do chunking and embedding in Python, then upload to a separate index. Can run without notebook 04 or Blob access. |
-| [07 - SharePoint indexed](notebooks/07-sharepoint-indexed.ipynb) | 60-90 min | Use Content Understanding semantic text chunks, embeddings and Entra ACL projections, following the text-only setup-index sample. Requires app/consent/site setup; no Vision components. |
-| [08 - SharePoint remote](notebooks/08-sharepoint-remote.ipynb) | 20-30 min | Retrieve from SharePoint without copying content into an index. Requires Microsoft 365 Copilot licensing or enabled Retrieval API billing. |
-| [09 - Foundry IQ knowledge base](notebooks/09-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine the existing Blob and indexed SharePoint indexes with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
-| [10 - Foundry IQ through APIM](notebooks/10-foundry-iq-apim.ipynb) | 30-40 min | Build on notebook 09 using an existing API Management gateway that validates callers and protects the Web IQ key. |
-| [11 - Hosted agent](notebooks/11-hosted-agent.ipynb) | 20-30 min | Deploy a small code-based agent to Foundry, without Docker. Needs Foundry and the chat model, not notebooks 09-10. |
-| [12 - Hosted agent + Foundry IQ toolbox](notebooks/12-foundry-iq-toolbox-agent.ipynb) | 30-40 min | Combine the patterns from 09 and 11. Uses Blob content, a shared toolbox connection and a per-agent Search role. |
-| [14 - Foundry IQ with Web IQ only](notebooks/14-foundry-iq-webiq-only.ipynb) | 15-25 min | Create a standalone Web IQ-only knowledge base, without APIM or indexes. Inspect MCP activity, URLs and passages; compare answer synthesis with extractive retrieval. Does not require 09 or 10. |
+| [04 - Blob indexer and skills](python-notebooks/04-blob-indexer-skills.ipynb) | 45-60 min | Let Search read Blob files, split text and generate embeddings. Compare keyword, vector, hybrid and semantic-ranked search. |
+| [05 - Blob + Content Understanding](python-notebooks/05-blob-content-understanding.ipynb) | 45-60 min | Extract an original two-page PDF as Markdown, chunk and embed it, then retrieve evidence with page ranges. Uses a separate index and billable Content Understanding. |
+| [06 - Chunk, embed and push](python-notebooks/06-push-chunks-vectors.ipynb) | 35-45 min | Do chunking and embedding in Python, then upload to a separate index. Can run without notebook 04 or Blob access. |
+| [07 - SharePoint indexed](python-notebooks/07-sharepoint-indexed.ipynb) | 60-90 min | Use Content Understanding semantic text chunks, embeddings and Entra ACL projections, following the text-only setup-index sample. Requires app/consent/site setup; no Vision components. |
+| [08 - SharePoint remote](python-notebooks/08-sharepoint-remote.ipynb) | 20-30 min | Retrieve from SharePoint without copying content into an index. Requires Microsoft 365 Copilot licensing or enabled Retrieval API billing. |
+| [09 - Foundry IQ knowledge base](python-notebooks/09-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine the existing Blob and indexed SharePoint indexes with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
+| [10 - Foundry IQ through APIM](python-notebooks/10-foundry-iq-apim.ipynb) | 30-40 min | Build on notebook 09 using an existing API Management gateway that validates callers and protects the Web IQ key. |
+| [11 - Hosted agent](python-notebooks/11-hosted-agent.ipynb) | 20-30 min | Deploy a small code-based agent to Foundry, without Docker. Needs Foundry and the chat model, not notebooks 09-10. |
+| [12 - Hosted agent + Foundry IQ toolbox](python-notebooks/12-foundry-iq-toolbox-agent.ipynb) | 30-40 min | Combine the patterns from 09 and 11. Uses Blob content, a shared toolbox connection and a per-agent Search role. |
+| [14 - Foundry IQ with Web IQ only](python-notebooks/14-foundry-iq-webiq-only.ipynb) | 15-25 min | Create a standalone Web IQ-only knowledge base, without APIM or indexes. Inspect MCP activity, URLs and passages; compare answer synthesis with extractive retrieval. Does not require 09 or 10. |
 
-**Optional extension:** [13 - Web IQ authentication](notebooks/13-web-iq-authentication.ipynb) (25-35 min) explores Entra tokens and managed identities instead of API keys. It is independent of the Search labs and needs a separate caller app/profile binding. Managed-identity exercises require Azure compute exposing that identity; the local exercise uses a hidden secret prompt.
+**Optional extension:** [13 - Web IQ authentication](python-notebooks/13-web-iq-authentication.ipynb) (25-35 min) explores Entra tokens and managed identities instead of API keys. It is independent of the Search labs and needs a separate caller app/profile binding. Managed-identity exercises require Azure compute exposing that identity; the local exercise uses a hidden secret prompt.
 
 ### Arrange these before class
 
@@ -458,15 +460,32 @@ These roles do not grant subscription/resource-group Contributor or Owner, Share
 
 ## 7. Open the notebooks
 
-**Participants start here once access is ready.** Open a terminal in the repository root (the folder containing `requirements.txt`). Get the shared `.env.azure` from your facilitator, or generate it by completing deployment yourself.
+**Participants start here once access is ready.** Open a terminal in the repository root (the folder containing `requirements.txt`). For Azure-connected labs, get the shared `.env.azure` from your facilitator, or generate it by completing deployment yourself. Lab 01 only needs a Web IQ profile API key.
 
-Create your local settings file without replacing an existing one, and sign in to the workshop tenant:
+### Choose your language
+
+| Folder | Available labs | How to explore |
+|---|---|---|
+| [python-notebooks](python-notebooks) | 01-14 | Python/Jupyter cells; setup below. |
+| [c-sharp-console-apps](c-sharp-console-apps/01-web-iq-apis) | 01 | Supported .NET 10 console app; choose one API per run. |
+| [c-sharp-notebooks](c-sharp-notebooks/01-web-iq-apis.dib) | 01 | C# cells in an optional legacy Polyglot Notebook (`.dib`); deprecated tooling. |
+
+The tracks share the root `.env` and `.env.azure`. Labs 02-14 have not been translated to C# yet. No Python installation is required for the console app.
+
+Create your local settings file without replacing an existing one:
 
 ```powershell
 if (-not (Test-Path .\.env)) { Copy-Item .\.env.example .\.env }
+```
+
+For Azure-connected labs (not required for lab 01), sign in to the workshop tenant:
+
+```powershell
 $settings = Get-Content .\.env.azure -Raw | ConvertFrom-StringData
 az login --tenant $settings.AZURE_TENANT_ID
 ```
+
+### Python notebooks
 
 Set up the Python environment once. If `.venv` already exists, reuse it and skip the first command:
 
@@ -480,7 +499,34 @@ python -m venv .venv
 
 On Microsoft-managed devices that block public PyPI, add `--index-url https://packagefeedproxy.microsoft.io/pypi/simple` to the pip command.
 
-Choose **Azure IQ Workshop** in the notebook's kernel picker. In VS Code, open the `.ipynb` file and select the kernel at the top right; you do not need to start JupyterLab if using VS Code. For the Web IQ track, open notebook 01 and run its cells from top to bottom, then continue with 02 and 03.
+Choose **Azure IQ Workshop** in the notebook's kernel picker. In VS Code, open the `.ipynb` file under `python-notebooks` and select the kernel at the top right; you do not need to start JupyterLab if using VS Code. Start the kernel with `python-notebooks` as its working directory, as lab 01 loads its settings from the parent folder. For the Web IQ track, open notebook 01 and run its cells from top to bottom, then continue with 02 and 03.
+
+### C# console app (lab 01)
+
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), then set the profile-issued `WEBIQ_API_KEY` in the root `.env`. Lab 01 needs only this key: no Azure sign-in or `.env.azure` is required for its direct Web IQ calls.
+
+Run from the repository root:
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- --help
+dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- web
+dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- images
+dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- browse 'https://ofac.treasury.gov/faqs'
+```
+
+Other commands: `localized`, `news`, `videos`. Append a quoted public query to any search command; for Browse, append a question after the URL. Browse reads the supplied URL without a hidden search request. HTTP errors print status/body and exit nonzero, without a traceback. Pending crawls retry at most four times with waits capped at 120 seconds. Calls and retries incur charges.
+
+`Program.cs` shows the six request payloads. The small `Workshop.cs` helper, also used by the C# notebook, loads simple `KEY=VALUE` settings and handles response printing/retry delays. It supports surrounding quotes and comments, but not dotenv interpolation or multiline values. `.env.azure` overrides `.env`, and both override existing environment variables. No additional NuGet packages are needed.
+
+### Optional legacy C# notebook (lab 01)
+
+**Deprecated tooling warning:** Polyglot Notebooks was deprecated March 27, 2026, and .NET Interactive April 24, 2026. They receive no new features, bug fixes or security fixes; future VS Code or SDK versions can break them. See [dotnet/interactive#4163](https://github.com/dotnet/interactive/issues/4163). The console app above is the recommended supported path.
+
+For a walkthrough of the VS Code extension and notebook interface, see Microsoft Learn's [Polyglot Notebooks: setting up your environment](https://learn.microsoft.com/en-us/training/modules/polyglot-notebooks/4-setting-up). This is a legacy guide and does not supersede the deprecation warning above.
+
+If your organization allows the legacy tooling and you already have the **Polyglot Notebooks** VS Code extension, open [01-web-iq-apis.dib](c-sharp-notebooks/01-web-iq-apis.dib), select C#, and run the cells top to bottom. Use `c-sharp-notebooks` as the kernel's working directory so parent configuration paths and the shared-helper import resolve. The ordinary Python/Jupyter extension alone does not run `.dib` files. Keep public queries only and inspect source attribution; image previews can contact external hosts.
+
+The notebook follows Python lab 01's public research examples, request descriptions, response explanations, clean HTTP errors and bounded Browse retries. It is included for exploration, not as a maintained tooling recommendation.
 
 All labs use the same local environment. Edit `.env` only for the labs you plan to run:
 
@@ -518,14 +564,25 @@ Use a workshop-only key. Authorized callers share its quota/billing; restrict so
 Run the actual notebook cells without opening Jupyter:
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\run-notebooks.py .\notebooks\01-web-iq-apis.ipynb
+.\.venv\Scripts\python.exe .\scripts\run-notebooks.py .\python-notebooks\01-web-iq-apis.ipynb
 ```
 
-Pass additional notebook paths to run them in the specified order. Each notebook gets a fresh kernel using the same Python environment as the script, with the repository root as its working directory. Top-level `await` works just as it does in Jupyter. The runner stops at the first failure and returns a nonzero exit code.
+Pass additional notebook paths to run them in the specified order. Each notebook gets a fresh kernel using the same Python environment as the script. Repository notebooks run with `python-notebooks` as their working directory; notebooks elsewhere retain the repository-root working directory. Top-level `await` works just as it does in Jupyter. The runner stops at the first failure and returns a nonzero exit code.
 
 **These are live runs, not mocked tests:** cells make service calls, incur charges, and create or delete resources according to the notebook's configuration. Prepare `.env`, `.env.azure`, credentials and required permissions first; interactive password prompts are not supported. Notebook opt-in flags retain their existing defaults, so a passing run does not verify disabled branches. Image previews are saved but their browser rendering is not verified.
 
 Original notebooks are unchanged. Executed copies, including partial outputs and errors from failed runs, are saved under the git-ignored `.deployment\notebook-runs` folder. Open those copies to inspect results; treat them as potentially sensitive. Use `--timeout 600` to allow ten minutes per cell, or `--output-dir PATH` to choose another output folder.
+
+### Offline checks for lab 01
+
+These checks make no Web IQ service calls:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_notebooks.py -k DirectApiCellTests
+dotnet run --project .\tests\c-sharp\WebIqLabTests.csproj
+```
+
+If the optional legacy `dotnet-interactive` tool is already installed, `test_csharp_notebook.py` also executes the actual C# cells against a mocked HTTP handler and checks request parity with Python. It uses isolated synthetic settings and temporary kernel specs; it skips when the tool is absent. Do not install deprecated tooling just to run the supported console tests.
 
 ## Costs and responsible use
 
@@ -552,7 +609,7 @@ Use only public, non-sensitive queries. Retrieved pages are untrusted evidence, 
 | Web IQ resource creation fails | Read the Azure error details; check the paid subscription, resource-creation permissions, provider registration and applicable Azure policies. |
 | API 401 | Confirm the profile-issued API key; do not use a Foundry/Azure key. |
 | API 403 / MCP tool absent | Check your allowed services and full-document entitlement. The optional notebook flags cannot grant access. |
-| Browse returns 202 | The notebook waits for `retryAfter` and retries with a bounded limit. An unfinished crawl raises an explicit error. |
+| Browse returns 202 | Lab 01 waits for `retryAfter` and retries with a bounded limit. An unfinished crawl prints an error; the console app also exits nonzero. |
 | 429 | Respect `Retry-After`; reduce concurrency, especially with shared workshop AppIDs. |
 | No Python kernel / imports fail | Select **Azure IQ Workshop**, install `requirements.txt` with that environment's Python, then restart the kernel. |
 | Missing `.env.azure` | Ask the facilitator for the shared configuration, or finish your own deployment. Do not invent endpoints. |

@@ -208,7 +208,7 @@ class KnowledgeBaseNotebookTests(unittest.TestCase):
 
     def test_notebook_only_creates_sources_and_knowledge_base(self):
         self.index_schemas()
-        for cell in nbformat.read(ROOT / "notebooks" / KB, as_version=4).cells:
+        for cell in nbformat.read(ROOT / "python-notebooks" / KB, as_version=4).cells:
             if cell.cell_type == "code" and cell.id != "configuration":
                 if cell.id.startswith("ask-"):
                     self.http.post.return_value = http_response(200, {"response": [], "activity": []})

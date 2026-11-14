@@ -9,6 +9,12 @@ from nbclient import NotebookClient
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def notebook_working_directory(path):
+    if path.resolve().parent == ROOT / "python-notebooks":
+        return path.resolve().parent
+    return ROOT
+
+
 def run_notebook(path, output_dir, timeout):
     notebook = nbformat.read(path, as_version=4)
     for cell in notebook.cells:
@@ -24,7 +30,7 @@ def run_notebook(path, output_dir, timeout):
         notebook,
         timeout=timeout,
         kernel_name="python3",
-        resources={"metadata": {"path": str(ROOT)}},
+        resources={"metadata": {"path": str(notebook_working_directory(path))}},
         on_cell_start=report_cell,
     )
     # Use the runner's Python environment, not the notebook's saved kernel selection.

@@ -85,7 +85,7 @@ run `az bicep install`, then repeat the version check.
 ## 2. Open the repository and sign in
 
 Open the repository folder in VS Code and open a PowerShell terminal. Running
-`Get-ChildItem` should show `infra`, `scripts`, `notebooks` and `README.md`.
+`Get-ChildItem` should show `infra`, `scripts`, `python-notebooks`, `c-sharp-notebooks`, `c-sharp-console-apps` and `README.md`.
 If you are currently in `infra`, run `Set-Location ..` first.
 
 ```powershell

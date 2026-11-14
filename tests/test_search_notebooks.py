@@ -863,7 +863,7 @@ class SearchCellTests(unittest.TestCase):
 
     def test_no_vision_or_custom_acl_incompatible_skills_in_new_code(self):
         for notebook in (BLOB, SP_INDEXED):
-            document = nbformat.read(ROOT / "notebooks" / notebook, as_version=4)
+            document = nbformat.read(ROOT / "python-notebooks" / notebook, as_version=4)
             code = "\n".join(cell.source for cell in document.cells if cell.cell_type == "code")
             for excluded in (
                 "#Microsoft.Skills.Vision.", "aiServicesVision",

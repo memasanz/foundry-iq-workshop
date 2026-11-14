@@ -26,7 +26,7 @@ class WebIqOnlyNotebookTests(unittest.TestCase):
         return output
 
     def test_notebook_is_valid_with_compilable_code_and_clean_outputs(self):
-        notebook = nbformat.read(ROOT / "notebooks" / NOTEBOOK, as_version=4)
+        notebook = nbformat.read(ROOT / "python-notebooks" / NOTEBOOK, as_version=4)
         nbformat.validate(notebook)
         for cell in notebook.cells:
             if cell.cell_type == "code":

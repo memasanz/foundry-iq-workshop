@@ -2,6 +2,7 @@ import ast
 import json
 import os
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -17,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def code_cell(notebook_name, cell_id):
-    notebook = nbformat.read(ROOT / "notebooks" / notebook_name, as_version=4)
+    notebook = nbformat.read(ROOT / "python-notebooks" / notebook_name, as_version=4)
     return next(cell.source for cell in notebook.cells if cell.id == cell_id)
 
 
@@ -43,7 +44,7 @@ def http_response(status, data, headers=None):
 
 class NotebookStructureTests(unittest.TestCase):
     def test_each_notebook_starts_with_permissions_and_attendee_alias_guidance(self):
-        for path in sorted((ROOT / "notebooks").glob("*.ipynb")):
+        for path in sorted((ROOT / "python-notebooks").glob("*.ipynb")):
             with self.subTest(notebook=path.name):
                 introduction = nbformat.read(path, as_version=4).cells[0]
                 self.assertEqual(introduction.cell_type, "markdown")
@@ -53,7 +54,7 @@ class NotebookStructureTests(unittest.TestCase):
                     self.assertIn("not enforce access isolation", introduction.source)
 
     def test_notebook_schema_syntax_and_clean_outputs(self):
-        paths = list((ROOT / "notebooks").glob("*.ipynb"))
+        paths = list((ROOT / "python-notebooks").glob("*.ipynb"))
         required = {
             "01-web-iq-apis.ipynb", "02-foundry-web-iq-agent.ipynb",
             "03-foundry-web-iq-toolbox.ipynb",
@@ -66,7 +67,7 @@ class NotebookStructureTests(unittest.TestCase):
             "14-foundry-iq-webiq-only.ipynb",
         }
         self.assertEqual(required, {path.name for path in paths})
-        for path in sorted(ROOT / "notebooks" / name for name in required):
+        for path in sorted(ROOT / "python-notebooks" / name for name in required):
             with self.subTest(notebook=path.name):
                 notebook = nbformat.read(path, as_version=4)
                 nbformat.validate(notebook)
@@ -81,7 +82,7 @@ class NotebookStructureTests(unittest.TestCase):
 
 
 class AttendeeAliasTests(unittest.TestCase):
-    def configure(self, number, alias, **overrides):
+    def configure(self, number, alias, working_directory=ROOT, **overrides):
         settings = {
             "AZURE_TENANT_ID": "11111111-1111-1111-1111-111111111111",
             "AZURE_SEARCH_ENDPOINT": "https://workshop.search.windows.net",
@@ -101,13 +102,13 @@ class AttendeeAliasTests(unittest.TestCase):
             "WORKSHOP_PREFIX": alias,
             **overrides,
         }
-        notebook = next((ROOT / "notebooks").glob(f"{number:02}-*.ipynb")).name
-        cell_id = "setup" if number in (2, 3, 5) else "configuration"
+        notebook = next((ROOT / "python-notebooks").glob(f"{number:02}-*.ipynb")).name
+        cell_id = "setup" if number in (2, 3, 5, 13) else "configuration"
         namespace = {}
         with (
             patch.dict(os.environ, settings, clear=True),
             patch("dotenv.load_dotenv"),
-            patch("pathlib.Path.cwd", return_value=ROOT),
+            patch("pathlib.Path.cwd", return_value=working_directory),
             patch("azure.identity.AzureCliCredential"),
             patch("azure.identity.get_bearer_token_provider"),
             patch("azure.ai.projects.AIProjectClient"),
@@ -116,6 +117,11 @@ class AttendeeAliasTests(unittest.TestCase):
         ):
             exec(code_cell(notebook, cell_id), namespace)
         return namespace
+
+    def test_configuration_supports_the_renamed_python_notebooks_directory(self):
+        for number in range(2, 15):
+            with self.subTest(notebook=number):
+                self.configure(number, "alice01", working_directory=ROOT / "python-notebooks")
 
     def test_two_attendees_have_disjoint_created_names_and_local_folders(self):
         objects = {
@@ -195,7 +201,7 @@ class AttendeeAliasTests(unittest.TestCase):
                         toolbox_mcp_url="https://workshop.services.ai.azure.com/toolboxes/test/mcp",
                         web_tool_name="webiq___web",
                     )
-                    notebook = next((ROOT / "notebooks").glob(f"{number:02}-*.ipynb")).name
+                    notebook = next((ROOT / "python-notebooks").glob(f"{number:02}-*.ipynb")).name
                     with patch("builtins.print"), patch.dict(
                         os.environ, {"AZURE_AI_MODEL_DEPLOYMENT_NAME": "workshop-chat"},
                     ):
@@ -216,6 +222,29 @@ class DirectApiCellTests(unittest.TestCase):
         with patch("builtins.print") as output:
             exec(code_cell("01-web-iq-apis.ipynb", cell_id), self.ns)
         return output
+
+    def test_setup_loads_parent_env_files_without_prompting(self):
+        def load_settings(path, override=False):
+            if path == r"..\.env":
+                os.environ["WEBIQ_API_KEY"] = "test-key"
+
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("dotenv.load_dotenv", side_effect=load_settings) as load,
+            patch("getpass.getpass") as prompt,
+        ):
+            output = self.run_cell("setup")
+        self.assertEqual([call.args[0] for call in load.call_args_list],
+                         [r"..\.env", r"..\.env.azure"])
+        self.assertTrue(all(call.kwargs["override"] for call in load.call_args_list))
+        self.assertEqual(self.ns["api_key"], "test-key")
+        prompt.assert_not_called()
+        self.assertNotIn("test-key", str(output.call_args_list))
+
+    def test_setup_requires_configured_api_key(self):
+        with patch.dict(os.environ, {}, clear=True), patch("dotenv.load_dotenv"):
+            with self.assertRaisesRegex(KeyError, "WEBIQ_API_KEY"):
+                self.run_cell("setup")
 
     def test_all_apis_run_even_with_legacy_service_flags_disabled(self):
         settings = {
@@ -258,23 +287,52 @@ class DirectApiCellTests(unittest.TestCase):
             with self.subTest(cell=cell_id):
                 self.post.reset_mock()
                 self.post.return_value = http_response(200, {"traceId": "test-trace"})
-                self.run_cell(cell_id)
+                output = self.run_cell(cell_id)
                 self.assertEqual(self.post.call_count, 1)
                 self.assertEqual(self.post.call_args.args[0], f"https://api.microsoft.ai/v3/{endpoint}")
                 self.assertEqual(self.post.call_args.kwargs["headers"]["x-apikey"], "test-key")
                 self.assertEqual(self.post.call_args.kwargs["timeout"], (10, 90))
-                self.post.return_value.raise_for_status.assert_called_once()
+                self.post.return_value.raise_for_status.assert_not_called()
+                self.assertFalse(any(call.args and call.args[0] == "HTTP:"
+                                     for call in output.call_args_list))
 
     def test_browse_pending_honors_duration(self):
         self.post.side_effect = [
             http_response(202, {"retryAfter": "60s", "traceId": "pending"}),
             http_response(200, {"content": "page"}),
         ]
-        self.run_cell("browse")
+        output = self.run_cell("browse")
         self.assertEqual(self.ns["page"]["content"], "page")
         self.ns["time"].sleep.assert_called_once_with(60)
         self.assertEqual(self.post.call_count, 2)
         self.assertEqual(self.post.call_args.kwargs["json"]["url"], "https://example.com")
+        self.assertFalse(any(call.args and call.args[0] == "HTTP:"
+                             for call in output.call_args_list))
+
+    def test_browse_pending_honors_utc_timestamp(self):
+        for timestamp, seconds in (
+            ("2026-11-14T16:00:30Z", 30),
+            ("2026-11-14T15:59:30Z", 0),
+            ("2026-11-14T16:03:00Z", None),
+        ):
+            with self.subTest(timestamp=timestamp):
+                self.ns["time"].sleep.reset_mock()
+                self.post.side_effect = [
+                    http_response(202, {"retryAfter": timestamp}),
+                    http_response(200, {"content": "page"}),
+                ]
+                with patch("datetime.datetime") as clock:
+                    clock.now.return_value = datetime(2026, 11, 14, 16, tzinfo=timezone.utc)
+                    clock.fromisoformat.side_effect = datetime.fromisoformat
+                    if seconds is None:
+                        output = self.run_cell("browse")
+                        self.assertIn("retry later manually", str(output.call_args_list))
+                        self.ns["time"].sleep.assert_not_called()
+                        self.assertEqual(self.ns["page"], {})
+                    else:
+                        self.run_cell("browse")
+                        self.ns["time"].sleep.assert_called_once_with(seconds)
+                        self.assertEqual(self.ns["page"]["content"], "page")
 
     def test_browse_requests_passages_without_full_document_permission(self):
         self.post.return_value = http_response(200, {"content": "Relevant excerpt"})
@@ -315,32 +373,81 @@ class DirectApiCellTests(unittest.TestCase):
         display.assert_not_called()
         output.assert_called_once_with("No images returned. Try another image search query.")
 
-    def test_http_failure_is_not_hidden_or_retried(self):
+    def test_http_failure_is_displayed_without_raising_or_reusing_results(self):
+        result_names = {
+            "web-search": "web", "localized-search": "localized", "browse": "page",
+            "news": "news", "images": "images", "videos": "videos",
+        }
         for status in (401, 403, 429, 503):
-            with self.subTest(status=status):
-                self.post.reset_mock()
-                self.post.return_value = http_response(status, {"traceId": "failure"})
-                with self.assertRaisesRegex(requests.HTTPError, f"HTTP {status}"):
-                    self.run_cell("web-search")
-                self.assertEqual(self.post.call_count, 1)
+            for cell_id, result_name in result_names.items():
+                with self.subTest(status=status, cell=cell_id):
+                    self.post.reset_mock()
+                    self.ns["web"] = {"webResults": [{"url": "https://example.com"}]}
+                    self.ns[result_name] = {"stale": True} if result_name != "web" else self.ns["web"]
+                    response = http_response(status, {"traceId": "failure"})
+                    response.reason = "Request failed"
+                    response.text = "error detail " + "x" * 8000
+                    self.post.return_value = response
+                    with patch("builtins.print") as output:
+                        exec(code_cell("01-web-iq-apis.ipynb", cell_id), self.ns)
+                    self.assertEqual(output.call_args_list[-2:], [
+                        unittest.mock.call("HTTP:", status, response.reason),
+                        unittest.mock.call(response.text[:8000]),
+                    ])
+                    response.json.assert_not_called()
+                    response.raise_for_status.assert_not_called()
+                    self.assertEqual(self.ns[result_name], {})
+                    self.assertEqual(self.post.call_count, 1)
 
     def test_exhausted_crawl_is_not_success(self):
         self.post.return_value = http_response(202, {"retryAfter": "1s"})
-        with self.assertRaises(TimeoutError):
-            self.run_cell("browse")
+        output = self.run_cell("browse")
+        output.assert_called_with('Browse did not complete after four requests. Retry later.')
+        self.assertEqual(self.ns["page"], {})
         self.assertEqual(self.post.call_count, 4)
         self.assertEqual(self.ns["time"].sleep.call_count, 3)
 
     def test_missing_crawl_delay_is_explicit(self):
         self.post.return_value = http_response(202, {"traceId": "bad-contract"})
-        with self.assertRaisesRegex(RuntimeError, "omitted retryAfter"):
-            self.run_cell("browse")
+        output = self.run_cell("browse")
+        output.assert_called_with('Pending crawl omitted retryAfter. Retry later manually.')
+        self.ns["time"].sleep.assert_not_called()
+        self.assertEqual(self.ns["page"], {})
 
     def test_excessive_crawl_delay_does_not_sleep(self):
         self.post.return_value = http_response(202, {"retryAfter": "121s"})
-        with self.assertRaises(TimeoutError):
-            self.run_cell("browse")
+        output = self.run_cell("browse")
+        self.assertIn("retry later manually", str(output.call_args_list))
         self.ns["time"].sleep.assert_not_called()
+        self.assertEqual(self.ns["page"], {})
+
+    def test_missing_browse_url_prints_message_without_request(self):
+        for web in ({}, {"webResults": []}, {"webResults": [{}]}):
+            with self.subTest(web=web):
+                self.ns["web"] = web
+                self.ns["page"] = {"stale": True}
+                output = self.run_cell("browse")
+                output.assert_called_once_with('No source URL to browse. Change the search query and rerun search.')
+                self.post.assert_not_called()
+                self.assertEqual(self.ns["page"], {})
+
+    def test_invalid_crawl_delay_prints_message_without_sleeping(self):
+        self.post.return_value = http_response(202, {"retryAfter": "not-a-timestamp"})
+        output = self.run_cell("browse")
+        output.assert_called_with('Could not interpret retryAfter. Retry later manually.')
+        self.ns["time"].sleep.assert_not_called()
+        self.assertEqual(self.ns["page"], {})
+
+    def test_unexpected_browse_status_does_not_parse_response(self):
+        response = http_response(204, {})
+        response.reason = "No Content"
+        response.text = ""
+        self.post.return_value = response
+        output = self.run_cell("browse")
+        self.assertIn(unittest.mock.call("HTTP:", 204, "No Content"), output.call_args_list)
+        response.json.assert_not_called()
+        self.ns["time"].sleep.assert_not_called()
+        self.assertEqual(self.ns["page"], {})
 
     def test_empty_search_response_is_displayed_without_fabricated_fields(self):
         self.post.return_value = http_response(200, {})

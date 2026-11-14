@@ -2,20 +2,20 @@
 
 | Notebook | What you will do |
 |---|---|
-| [01 - Web IQ APIs](notebooks/01-web-iq-apis.ipynb) | Call Web Search, Browse, News, Images and Videos directly; inspect results and source attribution. |
-| [02 - Foundry agent + Web IQ](notebooks/02-foundry-web-iq-agent.ipynb) | Discover Web IQ MCP tools, create a Foundry connection, and build an agent that uses Web IQ to answer questions with sources. Inspect tool calls and approve tool use. |
-| [03 - Foundry agent + Web IQ toolbox](notebooks/03-foundry-web-iq-toolbox.ipynb) | Create a toolbox exposing Web IQ, connect a Foundry agent to it, and compare with notebook 02's direct connection. |
-| [04 - Blob indexer and skills](notebooks/04-blob-indexer-skills.ipynb) | Use an indexer to chunk and embed Blob documents, then compare keyword, vector, hybrid and semantic-ranked search. |
-| [05 - Blob + Content Understanding](notebooks/05-blob-content-understanding.ipynb) | Extract and chunk an original two-page PDF as Markdown, embed the chunks, and retrieve evidence with page ranges. |
-| [06 - Chunk, embed and push](notebooks/06-push-chunks-vectors.ipynb) | Chunk and embed the same files in Python, push to a separate index through REST, and compare with the indexer approach. |
-| [07 - SharePoint indexed ingestion](notebooks/07-sharepoint-indexed.ipynb) | Extract semantic text sections with Content Understanding, embed them, preserve Entra user/group ACLs and query as the signed-in user. No Vision components. |
-| [08 - SharePoint remote retrieval](notebooks/08-sharepoint-remote.ipynb) | Query SharePoint through a remote knowledge source and the Copilot Retrieval API, without copying content into a Search index. |
-| [09 - Foundry IQ knowledge base](notebooks/09-foundry-iq-knowledge-base.ipynb) | Reference the existing Blob and indexed SharePoint indexes, then combine them with live Web IQ in one knowledge base. No new indexes or ingestion. |
-| [10 - Foundry IQ through APIM](notebooks/10-foundry-iq-apim.ipynb) | Query through an existing gateway that validates callers, preserves user context and supplies the Web IQ key. |
-| [11 - Hosted agent](notebooks/11-hosted-agent.ipynb) | Deploy and invoke a small code-based agent in Foundry. |
-| [12 - Hosted agent + Foundry IQ toolbox](notebooks/12-foundry-iq-toolbox-agent.ipynb) | Connect a hosted agent to a Blob-backed knowledge base through a toolbox and grant the agent its own Search access. |
-| [13 - Web IQ authentication (optional)](notebooks/13-web-iq-authentication.ipynb) | Replace an API key with an app-only Entra token and a Web IQ client-ID binding. |
-| [14 - Foundry IQ with Web IQ only](notebooks/14-foundry-iq-webiq-only.ipynb) | Create a separate knowledge base with basic Web IQ search only; inspect MCP errors and evidence without APIM, Blob or SharePoint. |
+| [01 - Web IQ APIs](python-notebooks/01-web-iq-apis.ipynb) | Call Web Search, Browse, News, Images and Videos directly; inspect results and source attribution. |
+| [02 - Foundry agent + Web IQ](python-notebooks/02-foundry-web-iq-agent.ipynb) | Discover Web IQ MCP tools, create a Foundry connection, and build an agent that uses Web IQ to answer questions with sources. Inspect tool calls and approve tool use. |
+| [03 - Foundry agent + Web IQ toolbox](python-notebooks/03-foundry-web-iq-toolbox.ipynb) | Create a toolbox exposing Web IQ, connect a Foundry agent to it, and compare with notebook 02's direct connection. |
+| [04 - Blob indexer and skills](python-notebooks/04-blob-indexer-skills.ipynb) | Use an indexer to chunk and embed Blob documents, then compare keyword, vector, hybrid and semantic-ranked search. |
+| [05 - Blob + Content Understanding](python-notebooks/05-blob-content-understanding.ipynb) | Extract and chunk an original two-page PDF as Markdown, embed the chunks, and retrieve evidence with page ranges. |
+| [06 - Chunk, embed and push](python-notebooks/06-push-chunks-vectors.ipynb) | Chunk and embed the same files in Python, push to a separate index through REST, and compare with the indexer approach. |
+| [07 - SharePoint indexed ingestion](python-notebooks/07-sharepoint-indexed.ipynb) | Extract semantic text sections with Content Understanding, embed them, preserve Entra user/group ACLs and query as the signed-in user. No Vision components. |
+| [08 - SharePoint remote retrieval](python-notebooks/08-sharepoint-remote.ipynb) | Query SharePoint through a remote knowledge source and the Copilot Retrieval API, without copying content into a Search index. |
+| [09 - Foundry IQ knowledge base](python-notebooks/09-foundry-iq-knowledge-base.ipynb) | Reference the existing Blob and indexed SharePoint indexes, then combine them with live Web IQ in one knowledge base. No new indexes or ingestion. |
+| [10 - Foundry IQ through APIM](python-notebooks/10-foundry-iq-apim.ipynb) | Query through an existing gateway that validates callers, preserves user context and supplies the Web IQ key. |
+| [11 - Hosted agent](python-notebooks/11-hosted-agent.ipynb) | Deploy and invoke a small code-based agent in Foundry. |
+| [12 - Hosted agent + Foundry IQ toolbox](python-notebooks/12-foundry-iq-toolbox-agent.ipynb) | Connect a hosted agent to a Blob-backed knowledge base through a toolbox and grant the agent its own Search access. |
+| [13 - Web IQ authentication (optional)](python-notebooks/13-web-iq-authentication.ipynb) | Replace an API key with an app-only Entra token and a Web IQ client-ID binding. |
+| [14 - Foundry IQ with Web IQ only](python-notebooks/14-foundry-iq-webiq-only.ipynb) | Create a separate knowledge base with basic Web IQ search only; inspect MCP errors and evidence without APIM, Blob or SharePoint. |
 
 **Document-track order:** 04 (Text Split), 05 (Content Understanding), 06 (Python push), then **07 (indexed SharePoint)** before **09 (Foundry IQ knowledge base)**. Notebook 09 reuses the Blob index from 04 (or 05, selected in its configuration cell) and the SharePoint index from 07. **08 (remote SharePoint)** is an independent alternative lab, not a prerequisite for 09. The knowledge-base lab is not notebook 06; notebook 10 builds on 09, and notebook 12 combines 09's Blob knowledge source with 11's hosted-agent pattern.
 

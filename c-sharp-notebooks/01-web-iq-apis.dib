@@ -1,0 +1,506 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"csharp","items":[{"aliases":[],"languageName":"csharp","name":"csharp"}]}}
+
+#!markdown
+
+# Lab 01 - Explore Microsoft Web IQ APIs (C#)
+
+**Optional legacy C# notebook.** Polyglot Notebooks was deprecated March 27, 2026,
+and .NET Interactive April 24, 2026. No future bug or security fixes are provided;
+future VS Code/SDK updates can break this path. Use it only if your organization
+allows this tooling. See the [official announcement](https://github.com/dotnet/interactive/issues/4163).
+For the supported .NET 10 option, use [the console app](../c-sharp-console-apps/01-web-iq-apis).
+
+
+## Required permissions
+
+A Web IQ profile API key authorized for Web Search, Browse, News, Images and Videos. No Azure RBAC or tenant administrator role is required to run this notebook.
+
+**Goal:** prototype source-backed research workflows: retrieve fresh public evidence, inspect sources, and choose the right API. Allow 40 minutes.
+
+Web IQ is a web intelligence service, not an LLM. Its Azure resource provides billing; API requests go to `https://api.microsoft.ai/v3`.
+
+**Before running:** set `WEBIQ_API_KEY` in the repository's `.env` and run the kernel from the `c-sharp-notebooks` directory. See the root README for C# setup. Only use public, non-sensitive queries. Calls incur usage charges; avoid repeatedly running all cells.
+
+**Outcomes:** explain passages versus full documents, distinguish crawl dates from publication dates, retain source attribution, handle crawl/retry responses, explore training media, and prepare an evidence-backed research handoff. Web IQ retrieves evidence; it is not a sanctions-screening system or a substitute for legal review.
+
+#!markdown
+
+## 1. Configuration (C#)
+
+Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+If you already have the deprecated **Polyglot Notebooks** VS Code extension,
+open this `.dib` and select C#; do not assume the ordinary Python/Jupyter
+extension can run it. The root README describes this optional legacy path.
+
+Start the kernel from `c-sharp-notebooks`, then run the cells top to bottom.
+Keep the shared `.env` and `.env.azure` in the repository root. Set a
+profile-issued `WEBIQ_API_KEY` in `.env`; no Azure sign-in is needed for lab 01.
+The setup cell imports the small shared settings/response helpers from
+`..\c-sharp-console-apps\01-web-iq-apis\Workshop.cs`; the API calls remain visible here.
+
+Settings load from `..\.env`, then `..\.env.azure`. File values override the
+current process environment, and `.env.azure` wins for duplicate settings.
+The helper accepts simple `KEY=VALUE` lines, optional surrounding quotes and
+comments, without dotenv interpolation or multiline values. It never prints the key.
+On HTTP errors, results are cleared and the status/body is printed without an exception.
+Fix the setup before continuing if the key is missing; do not rerun setup repeatedly
+without restarting the kernel.
+
+Use public, non-sensitive queries. Calls and Browse retries incur usage charges.
+Passage-only access is sufficient for this lab; full-document access is optional.
+
+#!csharp
+
+#r "System.Net.Http.Json"
+#r "System.Text.Json"
+#!import ..\c-sharp-console-apps\01-web-iq-apis\Workshop.cs
+
+using System;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json.Nodes;
+using System.Threading.Tasks;
+
+Workshop.LoadEnvFile(@"..\.env");
+Workshop.LoadEnvFile(@"..\.env.azure");
+string apiKey = Environment.GetEnvironmentVariable("WEBIQ_API_KEY");
+if (string.IsNullOrWhiteSpace(apiKey))
+    throw new InvalidOperationException("Set WEBIQ_API_KEY in the repository's .env.");
+
+HttpClient client = new HttpClient
+{
+    BaseAddress = new Uri("https://api.microsoft.ai/v3/"),
+    Timeout = TimeSpan.FromSeconds(90),
+};
+client.DefaultRequestHeaders.Add("x-apikey", apiKey);
+Console.WriteLine("Configuration loaded. The API key will not be displayed.");
+
+#!markdown
+
+## 2. Search the web for grounding passages
+
+The documented starting point is `maxResults=10`, `contentFormat='passage'`, `maxLength=3000`. A passage is query-relevant evidence, not a generated answer or a full webpage.
+
+### Request schema: `POST /v3/search/web`
+
+| Field | Type / required | Default | Meaning / allowed values / limits |
+| --- | --- | --- | --- |
+| `query` | string / yes | none | Search text, maximum **1000 characters**; minimum not documented. Supports `site:` and `-site:`. |
+| `maxResults` | integer / no | `10` | Maximum results requested: **50**; minimum not documented. Fewer results can be returned. |
+| `language` | string / no | `en` | Supported 2-letter ISO 639-1 interface language; not a guarantee of document language. |
+| `region` | string / no | `US` | Supported 2-letter country/region code, such as `US` or `ES`. |
+| `location` | string / no | none | Optional geographic hint, e.g. `lat:40.75;long:-74.00`; if omitted, location can be inferred from the query. Numeric bounds are not documented here. |
+| `contentFormat` | string / no | `passage` | Set `passage` explicitly to extract query-relevant text. |
+| `maxLength` | integer / no | `3000` | For this lab, request **1-3000 characters per result**. Larger values do not increase the passage-only profile's 3000-character cap. Not query length or total response size. |
+| `safeSearch` | string / no | `strict` | `strict` filters adult, racy, violent, hateful and self-harm content. `off` relaxes those filters; illegal content is still blocked. Does not verify accuracy, legal compliance or source trustworthiness. Not an absolute safety guarantee, especially with `site:` queries. |
+| `scopeName` | string / no | none | Selects a reusable set of rules that include or exclude domains, URL paths or individual pages from search results. Create and publish it in the Web IQ portal first; for example, an `OfficialSources` scope could include `ofac.treasury.gov`. Not an OAuth permission scope. Name: **1-128** ASCII letters, digits, `.`, `_`, `-`; no whitespace. Not used below. [Scope setup](https://learn.microsoft.com/web-iq/guides/create-scopes). |
+| `failOnMissingScope` | boolean / no | `true` | With a named scope, fail if it cannot be applied. `false` permits unscoped fallback. No effect without `scopeName`. |
+
+[Official Web Search reference](https://learn.microsoft.com/web-iq/reference/web-search); [supported languages and regions](https://learn.microsoft.com/web-iq/reference/supported-languages-regions).
+
+#!csharp
+
+string question = "What official OFAC guidance explains how to review a potential sanctions name match?";
+JsonObject web = new JsonObject();
+{
+    using HttpResponseMessage response = await client.PostAsJsonAsync("search/web", new
+    {
+        query = question,
+        maxResults = 10,
+        contentFormat = "passage",
+        maxLength = 3000,
+        language = "en",
+        region = "US",
+        safeSearch = "strict",
+    });
+    web = await Workshop.ReadResponseAsync(response);
+}
+
+#!markdown
+
+### Web Search response schema
+
+The response is a JSON object. `webResults` is a list of matching webpages; each item contains the fields explained below. These are **returned fields**, not parameters you send in the request.
+
+| Field | Type | Meaning / limits / availability |
+| --- | --- | --- |
+| `webResults` | array of objects | Search results; handle an empty or omitted array. Each result is described below. |
+| `querySignals.freshness` | boolean | Ranking signal indicating whether fresh documents should be prioritized; not a date filter. |
+| `riskLevel` | string | Content-safety rating of the **query itself**, not the returned results: `low`, `moderate`, `high`, `veryHigh`. Not a legal-risk or sanctions-risk assessment. |
+| `scopeApplied` | boolean, optional | Whether the requested named scope was applied; may be absent. Zero results do not mean scope failure. |
+
+#### Fields inside each `webResults` item
+
+For example, `web['webResults'][0]['title']` reads the first result's title. The notation `webResults[]` means each item in that list, not a separate JSON field.
+
+| Field | Type | What it tells you / how to use it |
+| --- | --- | --- |
+| `title` | string | The webpage's title: a label for the result, not an answer to your question or proof of relevance. |
+| `url` | string | The source webpage's address. Use it to open the source, cite it, or pass it to Browse. |
+| `content` | string | Query-relevant passages retrieved from that webpage. This is the evidence to read or give to a model, not a generated summary. In this lab it is limited by `maxLength`, up to 3000 characters per result; it can be shorter. |
+| `lastUpdatedAt` | ISO 8601 string, optional | When the webpage was last updated, if available. It is not necessarily the original publication date or the effective date of a law or policy. Never invent a date if it is missing. |
+| `crawledAt` | ISO 8601 string, optional | When the service last crawled the webpage. Helps assess the age of the retrieved copy; it does not say when the author published or changed it. |
+| `language` | string | The webpage's language, such as `en` or `es` (ISO 639-1). This can differ from the interface language requested. |
+| `isAdult` | boolean | Whether the result is classified as adult content. `false` is not a guarantee of overall safety, accuracy or suitability. |
+| `contentTier` | string | Commercial access category: `standard` for the default offering, `entitled` for content accessed through existing publisher licensing/BYOL arrangements, or `premium` for content subject to additional billing. Not a quality score. |
+| `clickUrl` | string, optional | A Bing redirect that opens the source and records a user click when click redirection is enabled. It generally leads to the same content as `url`. |
+| `domain` | string, conditional | The destination host, when included in the response. |
+| `instrumentationSuffix` | string, optional | Per-result identifier used with the telemetry base URLs below when instrumentation is enabled. Not part of the webpage's content. |
+
+String length bounds are not documented for these metadata fields; `content` is controlled by `maxLength` and profile access. Dates and other metadata can be missing or empty, so inspect what actually came back.
+
+### Common response metadata for search endpoints
+
+Now inspect the response above. These fields can also appear in News, Image and Video Search responses.
+
+| Field | Type | Meaning / availability |
+| --- | --- | --- |
+| `traceId` | string | Service trace identifier for troubleshooting. |
+| `instrumentationClickBase` | string | Optional base URL for click telemetry; present only when instrumentation is enabled and click redirection is not enabled. |
+| `instrumentationCitationBase` | string | Optional base URL for recording LLM citation usage when instrumentation is enabled. |
+
+**Instrumentation setup:** follow the [Web IQ instrumentation guide](https://learn.microsoft.com/en-us/web-iq/guides/instrumentation) to enable telemetry and report user clicks and LLM citation usage.
+
+### HTTP status information
+
+HTTP `200` means the request succeeded, not that useful results exist. Common failures: `400` invalid input, `401` authentication, `403` permission/content restrictions, `429` rate limiting, and `500`/`503`/`504` service errors. See [error handling](https://learn.microsoft.com/web-iq/reference/error-handling) and [instrumentation](https://learn.microsoft.com/web-iq/guides/instrumentation).
+
+#!markdown
+
+**Checkpoint:** which OFAC sources would you hand to an attorney, and why? Does `crawledAt` mean publication date? Could the first-ranked source still be outdated? What identifying information is missing before a reviewer can assess whether a name match refers to the same person or entity?
+
+## 3. Localization and deliberate source scoping
+
+Try a separate research task: discover Spanish-language guidance from Spain's data protection authority on generative AI and personal data. This is a localization example, not a translation of the sanctions query. The language parameter controls interface language; it does not guarantee that every returned document is in that language. A `site:` operator narrows recall and should be used only when the task needs it. `safeSearch='strict'` is not an absolute content-safety guarantee, especially with `site:`.
+
+**Request schema:** identical to Web Search in section 2. This request changes `query`, sets `language='es'` and `region='ES'`, and uses `site:aepd.es` inside the query. `maxResults=10`, `maxLength=3000`, `contentFormat='passage'` and `safeSearch='strict'` retain the same meanings and bounds.
+
+#!csharp
+
+JsonObject localized = new JsonObject();
+{
+    using HttpResponseMessage response = await client.PostAsJsonAsync("search/web", new
+    {
+        query = "inteligencia artificial generativa proteccion de datos personales site:aepd.es",
+        language = "es",
+        region = "ES",
+        safeSearch = "strict",
+        maxResults = 10,
+        contentFormat = "passage",
+        maxLength = 3000,
+    });
+    localized = await Workshop.ReadResponseAsync(response);
+}
+
+#!markdown
+
+### Localized Search response schema
+
+The response uses the same `webResults` schema and common metadata explained after the first Web Search response. Inspect each result's `language`, title, URL and content; the requested interface language does not guarantee that every document is Spanish.
+
+#!markdown
+
+## 4. Browse: from a discovered source to page content
+
+In the previous sections, we used **Search**, which starts with a question and finds relevant pages (`POST /v3/search/web`). Now we will look at **Browse**, which starts with a URL and retrieves content from that specific page (`POST /v3/browse`). These are two separate API calls: Search finds pages; Browse reads a page you choose.
+
+**`liveCrawl` controls whether Browse can fetch a public page directly from its website when the URL is not in Web IQ's index.**
+
+- **`'none'` (default):** return indexed content only; an unindexed URL returns HTTP 404.
+- **`'fallback'` (used below):** return indexed content if available; otherwise, request a live crawl. HTTP 202 means the crawl is still processing.
+
+**When it helps:** your application may already know a public URL, such as a newly published announcement or a less-discoverable documentation page, that Web IQ has not indexed yet. Fallback crawling can retrieve that page for grounding instead of stopping at a missing-index result. It does **not** force a refresh of an already-indexed page or guarantee the latest content; inspect `crawledAt` to assess when the page was last crawled.
+
+**Limits:** crawling depends on publisher restrictions and availability. Browse cannot sign in to a website or accept its login credentials or session cookies; the Web IQ API key authenticates only to Web IQ. For protected content, use an authorized API or connector, such as the SharePoint approaches in labs 07-08. Live crawling does not bypass login pages or paywalls.
+
+The earlier Web Search cell stored its JSON response in `web`. Its `webResults` list contains the pages Search found; `web.get('webResults', [])` reads that list, or returns an empty list if there were no results. Below, we select the first result, put its URL in `browse_url`, and print it so you can see exactly which page Browse will read. You can also set `browse_url` to a public URL you already know, without using Search first. The request uses `contentFormat='passage'` and `query=question` to retrieve relevant excerpts from that page.
+
+The loop makes up to four requests. For a pending crawl it waits until `retryAfter`, documented as a UTC timestamp; it also accepts older duration-style responses such as `60s`. Four requests and the two-minute wait cap are **not API limits**: they are notebook safeguards. Missing source URLs, invalid delays, waits longer than two minutes, and unfinished crawls print an explanatory message and stop instead of raising a traceback or being treated as page content.
+
+### Request schema: `POST /v3/browse`
+
+| Field | Type / required | Default | Meaning / allowed values / limits |
+| --- | --- | --- | --- |
+| `url` | string / yes | none | Public page to retrieve. URL length bounds not documented. |
+| `query` | string / yes for `passage` | none | Nonblank text selecting relevant excerpts; maximum **1000 characters**, independent of `maxLength`. |
+| `contentFormat` | string / no | `passage` | Set `passage` explicitly to extract query-relevant text. |
+| `maxLength` | integer / no | `3000` | For this lab, request **1-3000 content characters**. Larger values do not increase the passage-only profile's 3000-character cap. |
+| `liveCrawl` | string / no | `none` | `none`: index only, `404` if absent. `fallback`: request live crawl if unindexed; may return `202`. Not a forced refresh. |
+| `renderDynamicPages` | boolean / no | `false` | Enable JavaScript rendering for dynamic-content screenshot; works only with `liveCrawl='fallback'`. |
+| `language` | string / no | `en` | Supported 2-letter ISO 639-1 language. |
+| `region` | string / no | `US` | Supported 2-letter country/region code. |
+
+[Official Browse reference](https://learn.microsoft.com/web-iq/reference/browse).
+
+#!csharp
+
+JsonObject page = new JsonObject();
+string browseUrl = web["webResults"] is JsonArray searchResults && searchResults.Count > 0
+    ? searchResults[0]?["url"]?.GetValue<string>()
+    : null;
+if (string.IsNullOrWhiteSpace(browseUrl))
+{
+    Console.WriteLine("No source URL to browse. Change the search query and rerun search.");
+}
+else
+{
+    Console.WriteLine($"Reading page: {browseUrl}");
+    for (int attempt = 0; attempt < 4; attempt++)
+    {
+        using HttpResponseMessage response = await client.PostAsJsonAsync("browse", new
+        {
+            url = browseUrl, query = question, contentFormat = "passage",
+            maxLength = 3000, liveCrawl = "fallback",
+        });
+        page = await Workshop.ReadResponseAsync(response, browse: true);
+        if (page.Count == 0 || (int)response.StatusCode == 200)
+            break;
+        if (attempt == 3)
+        {
+            Console.WriteLine("Browse did not complete after four requests. Retry later.");
+            page = new JsonObject();
+            break;
+        }
+        if (!Workshop.TryGetRetryDelay(page, out double seconds))
+        {
+            page = new JsonObject();
+            break;
+        }
+        Console.WriteLine($"Crawl pending. Waiting {seconds:g}s...");
+        await Task.Delay(TimeSpan.FromSeconds(seconds));
+    }
+}
+
+#!markdown
+
+### Browse response schema
+
+| Field | Type | Meaning / limits / availability |
+| --- | --- | --- |
+| `url` | string | Page URL, or URL to retry while a crawl is pending. |
+| `title` | string | Page title; present only for successful `200` responses. |
+| `content` | string | Selected excerpts, bounded by `maxLength` and access; only for `200`. Nonadjacent excerpts can be separated by `...` and cut across sentences. |
+| `lastUpdatedAt`, `crawledAt` | ISO 8601 strings | Update and crawl times when available; omitted for `202`. |
+| `isAdult` | boolean | Content classification; omitted for `202`. |
+| `traceId` | string | Debugging identifier. |
+| `retryAfter` | string | Earliest retry time, documented as an ISO 8601 UTC timestamp such as `2026-10-30T01:01:00Z`; present for pending `202` crawls and some errors. |
+
+Browse returns one page object, not a results array. `202` is pending, not usable page content. [Official Browse reference and additional status codes](https://learn.microsoft.com/web-iq/reference/browse).
+
+#!markdown
+
+## 5. News: publisher attribution and current events
+
+Discover reporting on OFAC sanctions enforcement. Treat news as an alerting input for a research workflow, then verify any claimed change against official notices and effective dates. News is not authoritative transaction clearance.
+
+News results can include `source`, `lastUpdatedAt`, `crawledAt` and a thumbnail, but these fields are optional. Compare the publishers and date coverage against Web Search. News Search has a maximum of 20 results; do not assume it supports the video endpoint's `freshness` filter.
+
+### Request schema: `POST /v3/search/news`
+
+| Field | Type / required | Default | Meaning / allowed values / limits |
+| --- | --- | --- | --- |
+| `query` | string / yes | none | News search text; maximum **1000 characters**; minimum not documented. |
+| `maxResults` | integer / no | `10` | Maximum results: **20**; minimum not documented. This example requests `5`. |
+| `language` | string / no | `en` | Supported 2-letter interface language. |
+| `region` | string / no | `US` | Supported 2-letter country/region code. |
+| `location` | string / no | none | Geographic hint, e.g. `lat:40.75;long:-74.00`; numeric bounds not documented here. |
+| `contentFormat` | string / no | `passage` | Set `passage` explicitly to extract query-relevant text. |
+| `maxLength` | integer / no | `3000` | For this lab, request **1-3000 characters per result**. Larger values do not increase the passage-only profile's 3000-character cap. |
+| `scopeName` | string / no | none | Selects a reusable set of rules that include or exclude domains, URL paths or individual pages from news results. Create and publish it in the Web IQ portal first; for example, a scope can restrict results to selected publishers. Not an OAuth permission scope. Name: **1-128** ASCII letters, digits, `.`, `_`, `-`; no whitespace. [Scope setup](https://learn.microsoft.com/web-iq/guides/create-scopes). |
+| `failOnMissingScope` | boolean / no | `true` | Scope-failure behavior as in Web Search; `false` allows unscoped fallback. |
+
+`safeSearch` and `freshness` are not listed in the News request reference; do not copy them from other endpoints.
+
+[Official News Search reference](https://learn.microsoft.com/web-iq/reference/news-search).
+
+#!csharp
+
+JsonObject news = new JsonObject();
+{
+    using HttpResponseMessage response = await client.PostAsJsonAsync("search/news", new
+    {
+        query = "OFAC sanctions enforcement developments",
+        maxResults = 5,
+        language = "en",
+        region = "US",
+        contentFormat = "passage",
+        maxLength = 3000,
+    });
+    news = await Workshop.ReadResponseAsync(response);
+}
+
+#!markdown
+
+### News response schema
+
+| Field | Type | Meaning / limits / availability |
+| --- | --- | --- |
+| `newsResults` | array of objects | News articles; result count can be less than requested. |
+| `scopeApplied` | boolean, optional | Whether a named scope was applied; may be absent. |
+| `newsResults[].title`, `.url` | strings | Article title and source URL (see common response metadata after the first Web Search response). |
+| `newsResults[].content` | string | Retrieved passages, bounded by `maxLength` and profile access. |
+| `newsResults[].source` | string | Publisher name when available. |
+| `newsResults[].language` | string | Article language, ISO 639-1. |
+| `newsResults[].lastUpdatedAt`, `.crawledAt` | ISO 8601 strings | Update/crawl timestamps when available; not necessarily publication dates. |
+| `newsResults[].thumbnail` | object, optional | Preview image: `url` (string), `width` and `height` (integers in pixels; numeric bounds not documented). |
+| `newsResults[].isAdult` | boolean | Content classification. |
+
+Also see the common response metadata after the first Web Search response. Response string lengths are not documented except for `content`. [Official News Search reference](https://learn.microsoft.com/web-iq/reference/news-search).
+
+#!markdown
+
+## 6. Image and video discovery
+
+Find sanctions-screening workflow diagrams and OFAC sanctions-compliance training videos. Inspect how a diagram distinguishes a potential name match from a confirmed match and escalation for review. Check the publisher, date and intended audience; a diagram is not authoritative legal guidance.
+
+These are discovery results, not permission to reuse media. After inspecting the image response JSON, run the preview cell to display the returned thumbnails with their titles and source pages. Previews load from external URLs in your notebook viewer; they do not send your Web IQ API key to the image host. Videos remain metadata-only.
+
+Image filters include aspect ratio and minimum size. Video filters include duration, minimum resolution, and discovery-date freshness. An absent summary or moments array simply means that metadata is unavailable.
+
+### Image request schema: `POST /v3/search/images`
+
+| Field | Type / required | Default | Meaning / allowed values / limits |
+| --- | --- | --- | --- |
+| `query` | string / yes | none | Image search text; maximum **1000 characters**; minimum not documented. |
+| `maxResults` | integer / no | `30` | Maximum **30** results; minimum not documented. This example requests `3`. |
+| `language`, `region` | strings / no | `en`, `US` | Supported 2-letter language and country/region codes. |
+| `aspectRatio` | string / no | no filter | `square` (roughly 1:1), `wide` (width greater than height), `tall` (height greater than width). |
+| `color` | string / no | no filter | `colorOnly` or `monochrome`. |
+| `safeSearch` | string / no | `strict` | `strict` filters adult, racy, violent, hateful and self-harm content. `off` relaxes those filters; illegal content is still blocked. Does not verify accuracy, legal compliance or source trustworthiness. Not an absolute safety guarantee. |
+| `imageSize` | string / no | no filter | `small` (less than 200x200 px), `medium` (width or height 200-500 px), `large` (width or height at least 500 px), `extraLarge` (greater than 1024x768 px). |
+| `watermarkFree` | boolean / no | `false` | Exclude watermarked images; not a reuse license. |
+| `minHeight`, `maxHeight` | integers / no | no bounds specified | Custom height bounds in pixels; accepted numeric ranges not documented. |
+| `minWidth`, `maxWidth` | integers / no | no bounds specified | Custom width bounds in pixels; accepted numeric ranges not documented. |
+
+Custom pixel constraints take precedence over `imageSize` when they conflict. Images do not use `contentFormat` or `maxLength`.
+
+[Official Image Search reference](https://learn.microsoft.com/web-iq/reference/image-search).
+
+#!csharp
+
+JsonObject images = new JsonObject();
+{
+    using HttpResponseMessage response = await client.PostAsJsonAsync("search/images", new
+    {
+        query = "OFAC sanctions screening process flowchart",
+        maxResults = 3,
+        aspectRatio = "wide",
+        imageSize = "large",
+        safeSearch = "strict",
+    });
+    images = await Workshop.ReadResponseAsync(response);
+}
+
+#!markdown
+
+### Image response schema
+
+| Field | Type | Meaning / limits / availability |
+| --- | --- | --- |
+| `imageResults` | array of objects | Image discovery results, not downloaded image bytes. |
+| `imageResults[].title` | string | Image title. |
+| `imageResults[].url` | string | The image's source URL. |
+| `imageResults[].hostPageUrl` | string | Webpage hosting the image; use for source attribution. |
+| `imageResults[].thumbnailUrl` | string | Preview-image URL; may be absent. |
+| `imageResults[].caption` | string | Generated image description; not necessarily publisher text. |
+| `imageResults[].width`, `.height` | integers | Image dimensions in pixels; numeric response bounds not documented. |
+| `imageResults[].lastUpdatedAt` | ISO 8601 string | Last update time when available. |
+| `imageResults[].isAdult` | boolean | Content classification. |
+
+Also see the common response metadata after the first Web Search response. Response string lengths are not documented. The following preview cell uses `thumbnailUrl`, falling back to `url`; `width=400` is a notebook display size, not an API filter. [Official Image Search reference](https://learn.microsoft.com/web-iq/reference/image-search).
+
+#!csharp
+
+JsonArray imageResults = images["imageResults"] as JsonArray ?? new JsonArray();
+if (imageResults.Count == 0)
+    Console.WriteLine("No images returned. Try another image search query.");
+
+foreach (JsonNode image in imageResults)
+{
+    Console.WriteLine($"Title: {image?["title"] ?? "(unavailable)"}");
+    Console.WriteLine($"Source page: {image?["hostPageUrl"] ?? "(unavailable)"}");
+    string previewUrl = (image?["thumbnailUrl"] ?? image?["url"])?.GetValue<string>();
+    if (Uri.TryCreate(previewUrl, UriKind.Absolute, out Uri previewUri) &&
+        (previewUri.Scheme == Uri.UriSchemeHttps || previewUri.Scheme == Uri.UriSchemeHttp))
+    {
+        display(HTML($"<img src=\"{WebUtility.HtmlEncode(previewUrl)}\" width=\"400\" alt=\"Image preview\">"));
+    }
+    else
+    {
+        Console.WriteLine("No preview URL available.");
+    }
+}
+
+#!markdown
+
+### Video request schema: `POST /v3/search/videos`
+
+| Field | Type / required | Default | Meaning / allowed values / limits |
+| --- | --- | --- | --- |
+| `query` | string / yes | none | Video search text; maximum **1000 characters**; minimum not documented. |
+| `maxResults` | integer / no | `30` | Maximum **30** results; minimum not documented. This example requests `3`. |
+| `language`, `region` | strings / no | `en`, `US` | Supported 2-letter language and country/region codes. |
+| `enablePlaylist` | boolean / no | `false` | Request playlist results; availability is not guaranteed. |
+| `freshness` | string / no | no filter | Discovery-date filter: `week`, `month`, `year`, or ISO 8601 interval (`YYYY-MM-DD/YYYY-MM-DD` or UTC timestamp interval). Use `..` for an open interval end. Not publication date. |
+| `embeddable` | array of strings / no | no filter | Allowed member: `player` (embeddable player); array-length bounds not documented. |
+| `resolution` | string / no | no filter | **Minimum** resolution: `360p`, `480p`, `720p`, `1080p`; `720p` does not mean exactly 720p. |
+| `safeSearch` | string / no | `strict` | `strict` filters adult, racy, violent, hateful and self-harm content. `off` relaxes those filters; illegal content is still blocked. Does not verify accuracy, legal compliance or source trustworthiness. Not an absolute safety guarantee. |
+| `duration` | string / no | no filter | `short` (under 5 minutes), `medium` (5-20 minutes), `long` (over 20 minutes). |
+
+Videos do not use `contentFormat` or `maxLength`; the response is metadata, not video bytes.
+
+[Official Video Search reference](https://learn.microsoft.com/web-iq/reference/video-search).
+
+#!csharp
+
+JsonObject videos = new JsonObject();
+{
+    using HttpResponseMessage response = await client.PostAsJsonAsync("search/videos", new
+    {
+        query = "OFAC sanctions compliance training",
+        maxResults = 3,
+        duration = "medium",
+        resolution = "720p",
+        freshness = "year",
+        safeSearch = "strict",
+    });
+    videos = await Workshop.ReadResponseAsync(response);
+}
+
+#!markdown
+
+### Video response schema
+
+| Field | Type | Meaning / limits / availability |
+| --- | --- | --- |
+| `videoResults` | array of objects | Video discovery results; fewer than `maxResults` can be returned. |
+| `playlists` | array of objects, optional | Playlist `title`, `description` (strings), and `videos` array with each video's `title`, `description`, `url`. Optional even when requested. |
+| `videoResults[].title`, `.url` | strings | Video title and source URL (see common response metadata after the first Web Search response). |
+| `videoResults[].description` | string | Publisher-provided or LLM-generated description. |
+| `videoResults[].publishedBy` | string | Uploader/publisher. |
+| `videoResults[].viewCount` | 64-bit integer | Reported view count; numeric bounds not documented. |
+| `videoResults[].summary` | string, optional | AI-generated summary; verify against the source. |
+| `videoResults[].length` | string | Duration in `HH:MM:SS` format. |
+| `videoResults[].allowHttpsEmbedding`, `.allowMobileEmbedding` | booleans | Embedding capability indicators, not permission to reuse content. |
+| `videoResults[].embeddingUrl` | string | Embeddable player URL when available. |
+| `videoResults[].lastUpdatedAt` | string | Formatted last-update date; do not assume it is publication date or always ISO 8601. |
+| `videoResults[].bestMomentIndex` | integer | Index of the best segment when moments are available; bounds not documented. |
+| `videoResults[].moments` | array of objects, optional | Segment `title`, `description`, `momentUrl` (strings), `startTime`, `endTime` (strings in `d.hh:mm:ss` format). |
+| `videoResults[].thumbnailUrl` | string | Preview URL. |
+| `videoResults[].width`, `.height` | integers | Video dimensions in pixels; numeric bounds not documented. |
+| `videoResults[].isAdult` | boolean | Content classification. |
+
+Several video metadata fields are optional. Also see the common response metadata after the first Web Search response; response string lengths and moment/playlist counts are not documented. [Official Video Search reference](https://learn.microsoft.com/web-iq/reference/video-search).
+
+#!markdown
+
+## Continue to lab 02
+
+Open `02-foundry-web-iq-agent.ipynb` to let a Foundry agent call this same service through MCP. Notice the distinction: REST gives you explicit retrieval control; the agent adds model-driven tool selection, approvals and synthesis.
+
+Before sharing this notebook, clear all outputs. Returned web content, trace IDs and URLs may still reveal the topics you searched for. Follow the root README cleanup steps after the workshop.
+
+References: [REST quickstart](https://learn.microsoft.com/web-iq/get-started/quickstart), [Web Search](https://learn.microsoft.com/web-iq/reference/web-search), [Browse](https://learn.microsoft.com/web-iq/reference/browse), [News](https://learn.microsoft.com/web-iq/reference/news-search), [Images](https://learn.microsoft.com/web-iq/reference/image-search), [Videos](https://learn.microsoft.com/web-iq/reference/video-search).
