@@ -29,6 +29,11 @@ Use `dotnet run --project` to select a lab's project folder from the repository 
 Arguments after `--` are passed to the application. Each lab README provides complete commands you can copy.
 `dotnet run` builds the project automatically.
 
+Labs 02 and 03 also provide **separate commands for each lab step**.
+Use `--help` to see their command lists, then follow the selected lab README in order.
+Each step runs separately so you can inspect discovery, connections, toolbox or agent creation, and answers.
+The `run` command still performs the complete workflow; you do not have to execute the separate steps first.
+
 Keep local settings in the repository-root `.env` and, when required, `.env.azure`.
 Follow the selected lab's instructions for which values to set; never put credentials in source code or commit them.
 Build outputs in `bin` and `obj` are ignored by Git.

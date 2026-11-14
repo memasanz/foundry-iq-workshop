@@ -63,6 +63,10 @@ model and Web IQ charges. A completed initial response always triggers another b
 Resources are retained and shared across the language tracks when you reuse the same prefix.
 See [lab 02 configuration, permissions and behavior](../../c-sharp-console-apps/02-foundry-web-iq-agent/README.md).
 
+To explore one step at a time, use the separate commands listed by `--help` and follow the lab README's sequence.
+Connection setup, agent creation, the initial question and the follow-up can run separately.
+The full `run` command retains its automatic follow-up; a separate initial-question command does not hide another model call.
+
 ### Optional legacy C# notebook (lab 02)
 
 The same deprecation and kernel-compatibility warnings above apply. Open
@@ -98,6 +102,11 @@ creates or updates a separate agent-to-toolbox connection, and creates a prompt-
 Both tool layers use `require_approval='never'`; the question runs without an approval prompt or automatic follow-up.
 The toolbox, connection and agent names stay stable across runs. Resources are retained and calls incur charges.
 See [lab 03 configuration and authentication](../../c-sharp-console-apps/03-foundry-web-iq-toolbox/README.md).
+
+Use `--help` and the lab README to run individual steps instead:
+inspect the existing Web IQ connection, publish the toolbox, discover tools, configure its connection,
+create the agent, and ask a question. The discovery command reads an existing toolbox rather than publishing a new version.
+The `run` command remains the complete workflow.
 
 ### Optional legacy C# notebook (lab 03)
 
