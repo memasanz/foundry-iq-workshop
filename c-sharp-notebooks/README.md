@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently, [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb) and [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb) are available.
+Currently, [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb) and [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb) are available.
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -64,7 +64,9 @@ If `.env.azure` exists, the notebook loads it after `.env`, so its duplicate set
 ## 4. Open and run lab 01
 
 Open [01-web-iq-apis.ipynb](01-web-iq-apis.ipynb) in VS Code and select the **.NET Interactive C#** kernel.
-Run the kernel from the `c-sharp-notebooks` directory so the parent settings files and shared-helper import resolve.
+Run the kernel from the `c-sharp-notebooks` directory so the parent settings files resolve.
+All notebooks define their helpers inline; no console-app source files or `#!import` directives are needed.
+Run the helper cells before Configuration.
 To check its working directory, run this in a C# scratch cell:
 
 ```csharp
@@ -100,3 +102,21 @@ The helper uses `HttpClient` and Azure CLI tokens, with no extra NuGet packages 
 Failed discovery prevents later resource cells from writing to Azure. Resources are retained for lab 03.
 
 **Full runs incur model and Web IQ charges**, including the follow-up. Use public queries and clear outputs before sharing.
+
+## 6. Open and run lab 03
+
+Complete lab 02's Web IQ connection setup first, using either language track with the same `WORKSHOP_PREFIX`.
+Lab 03 requires **Foundry Owner on the parent Foundry resource**, the Azure settings and Azure CLI sign-in.
+It reuses the stored Web IQ connection; you do not need to supply or copy its API key into this lab.
+See [lab 03 prerequisites](../c-sharp-console-apps/03-foundry-web-iq-toolbox/README.md).
+
+Open [03-foundry-web-iq-toolbox.ipynb](03-foundry-web-iq-toolbox.ipynb) with the C# kernel and the same working directory.
+Run its commented inline helpers and then the numbered sections in order.
+The notebook follows Python lab 03: publish a toolbox exposing `web` and `news`, discover its namespaced tools
+with Entra authentication, configure a separate agent-to-toolbox connection, and create a prompt agent.
+Both layers use automatic approvals. The toolbox, connection and agent have stable prefix-based names.
+
+Reruns publish new toolbox and agent versions and update the existing toolbox connection.
+Use the newly created agent version and conversation after updating the connection; older agent versions can
+still point at a different toolbox URL. The question runs once, with no automatic follow-up.
+Resources are retained, and live model/Web IQ calls incur charges. Clear outputs before sharing.

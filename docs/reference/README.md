@@ -74,7 +74,7 @@ Use only public, non-sensitive queries. Retrieved pages are untrusted evidence, 
 | SharePoint 07 authorization fails | Check admin consent, the explicit site grant, required API permissions and federation to the current Search identity. Subscription Owner is not tenant admin consent. |
 | SharePoint 08 license/billing error | Check each querying user's Microsoft 365 Copilot license or enabled Retrieval API pay-as-you-go; GitHub Copilot does not qualify. |
 | Model deployment fails | Check supported versions/SKUs and remaining regional quota, then re-run with valid `-ModelName`, `-ModelVersion`, and `-ModelCapacity`. |
-| MCP approval keeps appearing | Notebook 03 intentionally requires approval for every call. Notebook 02 runs `web` without prompts; rerun its agent-creation cell to apply the updated configuration and start a fresh conversation. |
+| MCP approval keeps appearing | Notebook 02 runs `web`/`browse` without prompts; rerun its agent-creation cell. Notebook 03 runs `web`/`news` without prompts at both layers; rerun sections 2-5 to update the toolbox, discovery, connection and agent. Start a fresh conversation in either case. |
 
 
 ## Cleanup

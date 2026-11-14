@@ -26,12 +26,6 @@ class CSharpNotebookTests(unittest.TestCase):
         cls.path = Path(cls.folder.name)
         cls.working_directory = cls.path / "c-sharp-notebooks"
         cls.working_directory.mkdir()
-        helper_directory = cls.path / "c-sharp-console-apps" / "01-web-iq-apis"
-        helper_directory.mkdir(parents=True)
-        shutil.copyfile(
-            ROOT / "c-sharp-console-apps" / "01-web-iq-apis" / "Workshop.cs",
-            helper_directory / "Workshop.cs",
-        )
         (cls.path / ".env").write_text("WEBIQ_API_KEY=local-test-key\n", encoding="utf-8")
         (cls.path / ".env.azure").write_text("WEBIQ_API_KEY=synthetic-test-key\n", encoding="utf-8")
         cls.kernel_directory = cls.path / "kernels"
@@ -48,7 +42,12 @@ class CSharpNotebookTests(unittest.TestCase):
 
     def execute(self, handler, checks):
         notebook = copy.deepcopy(self.notebook)
-        setup_index = next(index for index, cell in enumerate(notebook.cells) if cell.cell_type == "code")
+        self.assertFalse((self.path / "c-sharp-console-apps").exists())
+        self.assertFalse(any("#!import" in cell.source for cell in notebook.cells if cell.cell_type == "code"))
+        setup_index = next(
+            index for index, cell in enumerate(notebook.cells)
+            if cell.id in ("9c424141", "setup")
+        )
         notebook.cells.insert(setup_index + 1, nbformat.v4.new_code_cell(
             handler, metadata=copy.deepcopy(notebook.cells[setup_index].metadata),
         ))

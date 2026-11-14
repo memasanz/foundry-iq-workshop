@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01 and 02. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-03. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -20,7 +20,7 @@ dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- browse 'https://of
 
 Other commands: `localized`, `news`, `videos`. Append a quoted public query to any search command; for Browse, append a question after the URL. Browse reads the supplied URL without a hidden search request. HTTP errors print status/body and exit nonzero, without a traceback. Pending crawls retry at most four times with waits capped at 120 seconds. Calls and retries incur charges.
 
-`Program.cs` shows the six request payloads. The small `Workshop.cs` helper, also used by the C# notebook, loads simple `KEY=VALUE` settings and handles response printing/retry delays. It supports surrounding quotes and comments, but not dotenv interpolation or multiline values. `.env.azure` overrides `.env`, and both override existing environment variables. No additional NuGet packages are needed.
+`Program.cs` shows the six request payloads. The small `Workshop.cs` helper loads simple `KEY=VALUE` settings and handles response printing/retry delays. The C# notebook defines its own helpers inline and needs no console-app files. It supports surrounding quotes and comments, but not dotenv interpolation or multiline values. `.env.azure` overrides `.env`, and both override existing environment variables. No additional NuGet packages are needed.
 
 ### Optional legacy C# notebook (lab 01)
 
@@ -30,7 +30,7 @@ For a walkthrough of the VS Code extension and notebook interface, see Microsoft
 
 The [C# notebooks README](../../c-sharp-notebooks/README.md) walks through installation, an offline C# check, workshop settings and opening lab 01.
 
-If your organization allows the legacy tooling and you have the **Polyglot Notebooks** VS Code extension, open [01-web-iq-apis.ipynb](../../c-sharp-notebooks/01-web-iq-apis.ipynb), select the **.NET Interactive C#** kernel, and run the cells top to bottom. Use `c-sharp-notebooks` as the kernel's working directory so parent configuration paths and the shared-helper import resolve. Use a C# kernel, not a Python kernel; Python is not required for this Polyglot VS Code path. Keep public queries only and inspect source attribution; image previews can contact external hosts.
+If your organization allows the legacy tooling and you have the **Polyglot Notebooks** VS Code extension, open [01-web-iq-apis.ipynb](../../c-sharp-notebooks/01-web-iq-apis.ipynb), select the **.NET Interactive C#** kernel, and run the cells top to bottom. Use `c-sharp-notebooks` as the kernel's working directory so parent configuration paths resolve. The notebook is self-contained; run its inline helper cells before Configuration. Use a C# kernel, not a Python kernel; Python is not required for this Polyglot VS Code path. Keep public queries only and inspect source attribution; image previews can contact external hosts.
 
 The notebook follows Python lab 01's public research examples, request descriptions, response explanations, clean HTTP errors and bounded Browse retries. It is included for exploration, not as a maintained tooling recommendation.
 
@@ -80,3 +80,30 @@ dotnet run --project .\tests\c-sharp-foundry\FoundryLabTests.csproj
 
 The second check requires the optional legacy `.NET Interactive` tool plus the repository's Python test
 environment; Python is a test-runner dependency here, not a requirement to use the C# notebook in VS Code.
+
+### C# console app (lab 03)
+
+Lab 03 follows the Python toolbox notebook, using .NET 10, `HttpClient` and Azure CLI tokens.
+Complete lab 02's connection setup in either language with the same `WORKSHOP_PREFIX`.
+You need **Foundry Owner on the parent Foundry resource**, the shared Azure settings and Azure CLI sign-in.
+This lab reads the existing Web IQ connection's metadata, not its API key.
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- --help
+dotnet run --project .\c-sharp-console-apps\03-foundry-web-iq-toolbox -- run
+```
+
+The full run publishes a toolbox exposing `web` and `news`, discovers it using Entra authentication,
+creates or updates a separate agent-to-toolbox connection, and creates a prompt-agent version and conversation.
+Both tool layers use `require_approval='never'`; the question runs without an approval prompt or automatic follow-up.
+The toolbox, connection and agent names stay stable across runs. Resources are retained and calls incur charges.
+See [lab 03 configuration and authentication](../../c-sharp-console-apps/03-foundry-web-iq-toolbox/README.md).
+
+### Optional legacy C# notebook (lab 03)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[03-foundry-web-iq-toolbox.ipynb](../../c-sharp-notebooks/03-foundry-web-iq-toolbox.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as the working directory. Its commented helpers are inline; no console-app imports are needed.
+Run the numbered sections in order to explore the two authentication hops:
+agent to toolbox uses Entra tokens; toolbox to Web IQ uses lab 02's stored profile-key connection.
+Rerun agent creation after updating the toolbox connection so the agent and connection target the same toolbox version.

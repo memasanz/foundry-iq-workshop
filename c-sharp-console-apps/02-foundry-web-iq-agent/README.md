@@ -56,7 +56,7 @@ dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- run 'Find
 
 The agent allows **`web` and `browse`**, with `require_approval="never"`. `news`, `images` and `videos` are optional tools on the same endpoint, not enabled here. Change `CreateDefinition` and the instructions together if extending the exercise.
 
-`FoundryWorkshop.cs` contains the shared discovery, connection, agent and response logic used by the C# notebook; `Program.cs` shows the console sequence. Unlike Python's SDK, this HTTP implementation has **no automatic retries**. HTTP errors, including 401/429, print bounded diagnostics and retry headers; transport/timeouts and failed/incomplete responses return no answer. Unexpected approvals and agent-name conflicts remain configuration errors. Failures return a nonzero exit code.
+`FoundryWorkshop.cs` contains the console app's discovery, connection, agent and response logic; `Program.cs` shows the console sequence. The C# notebook defines its own helpers inline and does not import console-app source files. Unlike Python's SDK, this HTTP implementation has **no automatic retries**. HTTP errors, including 401/429, print bounded diagnostics and retry headers; transport/timeouts and failed/incomplete responses return no answer. Unexpected approvals and agent-name conflicts remain configuration errors. Failures return a nonzero exit code.
 
 ## Inspector and retained resources
 

@@ -39,6 +39,8 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
             "credential": Mock(get_token=Mock(return_value=SimpleNamespace(token="arm-token"))),
             "requests": Mock(),
             "web_tool_name": "webiq___web",
+            "news_tool_name": "webiq___news",
+            "tool_names": ["webiq___web", "webiq___news"],
         }
 
     def run_cell(self, cell_id, source=None):
@@ -61,7 +63,7 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
             self.run_cell("get-webiq-connection")
         self.project.toolboxes.create_version.assert_not_called()
 
-    def test_toolbox_references_key_connection_and_exposes_only_web(self):
+    def test_toolbox_references_key_connection_and_exposes_web_and_news_without_approval(self):
         self.create_toolbox()
         args = self.project.toolboxes.create_version.call_args.kwargs
         self.assertEqual(args["name"], "webiq-toolbox-session")
@@ -69,8 +71,8 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
         self.assertEqual(tool.server_url, WEBIQ_URL)
         self.assertEqual(tool.server_label, "webiq")
         self.assertEqual(tool.project_connection_id, f"{PROJECT_ID}/connections/webiq-mcp")
-        self.assertEqual(tool.allowed_tools, ["web"])
-        self.assertEqual(tool.require_approval, "always")
+        self.assertEqual(tool.allowed_tools, ["web", "news"])
+        self.assertEqual(tool.require_approval, "never")
         self.assertIsNone(tool.headers)
         self.assertIsNone(tool.authorization)
         self.project.toolboxes.update.assert_called_once_with(
@@ -107,7 +109,7 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Unexpected connection status: 202"):
             self.run_cell("create-toolbox-connection")
 
-    def test_agent_attaches_only_toolbox_and_requires_approval(self):
+    def test_agent_attaches_only_toolbox_and_allows_web_and_news_without_approval(self):
         self.create_toolbox()
         self.run_cell("create-agent")
         definition = self.project.agents.create_version.call_args.kwargs["definition"]
@@ -117,8 +119,10 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
         self.assertEqual(tool.server_url, self.ns["toolbox_mcp_url"])
         self.assertNotEqual(tool.server_url, WEBIQ_URL)
         self.assertEqual(tool.project_connection_id, "webiq-toolbox-session-connection")
-        self.assertEqual(tool.allowed_tools, ["webiq___web"])
-        self.assertEqual(tool.require_approval, "always")
+        self.assertEqual(tool.allowed_tools, ["webiq___web", "webiq___news"])
+        self.assertEqual(tool.require_approval, "never")
+        self.assertIn("webiq___web", definition.instructions)
+        self.assertIn("webiq___news", definition.instructions)
         self.assertIsNone(tool.headers)
 
     def test_verification_requires_successful_webiq_call_from_toolbox(self):
@@ -128,15 +132,17 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
             "error": None, "output": "Retrieved evidence", "arguments": "{}",
         }
         for change in (
-            {"server_label": "webiq"}, {"name": "different_tool"},
+            {"server_label": "webiq"}, {"name": "webiq___browse"},
             {"error": "authorization failed"}, {"output": ""},
         ):
             with self.subTest(change=change):
                 self.ns["tool_history"] = [SimpleNamespace(**{**expected, **change})]
                 with self.assertRaisesRegex(RuntimeError, "No successful Web IQ call"):
                     self.run_cell("verify")
-        self.ns["tool_history"] = [SimpleNamespace(**expected)]
-        self.run_cell("verify")
+        for name in ("webiq___web", "webiq___news"):
+            with self.subTest(successful_tool=name):
+                self.ns["tool_history"] = [SimpleNamespace(**{**expected, "name": name})]
+                self.run_cell("verify")
         self.ns["response"].output_text = ""
         with self.assertRaisesRegex(RuntimeError, "no final answer"):
             self.run_cell("verify")
@@ -153,7 +159,7 @@ class WebIqToolboxNotebookTests(unittest.TestCase):
         self.ns["credential"].close.assert_called_once()
 
 
-class WebIqToolboxApprovalTests(test_notebooks.AgentHelperTests):
+class WebIqToolboxRuntimeTests(test_notebooks.AgentHelperTests):
     def namespace(self, responses, notebook_name=NOTEBOOK):
         return super().namespace(responses, notebook_name)
 

@@ -138,18 +138,25 @@ class AttendeeAliasTests(unittest.TestCase):
         def load_settings(path, override=False):
             return load_dotenv(stream=StringIO(files[path]), override=override)
 
-        loader = Mock(side_effect=load_settings)
-        namespace = self.configure(2, "processalias", dotenv_loader=loader)
-        self.assertEqual([call.args[0] for call in loader.call_args_list],
-                         [r"..\.env", r"..\.env.azure"])
-        self.assertTrue(all(call.kwargs["override"] for call in loader.call_args_list))
-        self.assertEqual(namespace["api_key"], "env-test-key")
-        self.assertEqual(namespace["prefix"], "bob02")
-        self.assertEqual(namespace["connection_name"], "bob02-webiq-mcp")
-        namespace["AIProjectClient"].assert_called_once_with(
-            endpoint="https://fresh.services.ai.azure.com/api/projects/workshop",
-            credential=namespace["credential"],
-        )
+        for number in (2, 3):
+            with self.subTest(notebook=number):
+                loader = Mock(side_effect=load_settings)
+                namespace = self.configure(number, "processalias", dotenv_loader=loader)
+                self.assertEqual([call.args[0] for call in loader.call_args_list],
+                                 [r"..\.env", r"..\.env.azure"])
+                self.assertTrue(all(call.kwargs["override"] for call in loader.call_args_list))
+                self.assertEqual(namespace["prefix"], "bob02")
+                expected_client = {
+                    "endpoint": "https://fresh.services.ai.azure.com/api/projects/workshop",
+                    "credential": namespace["credential"],
+                }
+                if number == 2:
+                    self.assertEqual(namespace["api_key"], "env-test-key")
+                    self.assertEqual(namespace["connection_name"], "bob02-webiq-mcp")
+                else:
+                    self.assertEqual(namespace["webiq_connection_name"], "bob02-webiq-mcp")
+                    expected_client["allow_preview"] = True
+                namespace["AIProjectClient"].assert_called_once_with(**expected_client)
 
     def test_two_attendees_have_disjoint_created_names_and_local_folders(self):
         objects = {
@@ -196,14 +203,16 @@ class AttendeeAliasTests(unittest.TestCase):
                 self.assertEqual(hosted["connection_name"], f"{alias}-iq-search-mcp")
                 self.assertEqual(hosted["connection_id"], f"{hosted['project_resource_id']}/connections/{alias}-iq-search-mcp")
 
-    def test_toolbox_name_is_stable_and_prefixed_across_sessions(self):
+    def test_toolbox_connection_and_agent_names_are_stable_and_prefixed_across_runs(self):
         first = self.configure(3, "alice01")
         second = self.configure(3, "alice01")
         self.assertEqual(first["toolbox_name"], "alice01-webiq-toolbox")
         self.assertEqual(second["toolbox_name"], first["toolbox_name"])
-        self.assertNotEqual(first["toolbox_connection_name"], second["toolbox_connection_name"])
-        self.assertNotEqual(first["agent_name"], second["agent_name"])
-        self.assertTrue(first["toolbox_connection_name"].startswith("alice01-webiq-toolbox-"))
+        self.assertEqual(first["toolbox_connection_name"], "alice01-webiq-toolbox-connection")
+        self.assertEqual(second["toolbox_connection_name"], first["toolbox_connection_name"])
+        self.assertEqual(first["toolbox_connection_id"], second["toolbox_connection_id"])
+        self.assertEqual(first["agent_name"], "alice01-webiq-toolbox-agent")
+        self.assertEqual(second["agent_name"], first["agent_name"])
 
     def test_webiq_connection_name_is_derived_only_from_prefix(self):
         for number in (2, 3):
@@ -228,6 +237,7 @@ class AttendeeAliasTests(unittest.TestCase):
                     namespace.update(
                         toolbox_mcp_url="https://workshop.services.ai.azure.com/toolboxes/test/mcp",
                         web_tool_name="webiq___web",
+                        tool_names=["webiq___web", "webiq___news"],
                     )
                     notebook = next((ROOT / "python-notebooks").glob(f"{number:02}-*.ipynb")).name
                     with patch("builtins.print"), patch.dict(
@@ -637,20 +647,44 @@ class AgentDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             await self.discover([], failure=RuntimeError("Unexpected failure"))
 
     async def test_toolbox_discovery_uses_foundry_token_and_namespaced_tools(self):
-        namespace, cursors = await self.discover(
-            [
-                {"tools": [], "nextCursor": "page-2"},
-                {"tools": [{
+        with patch.object(
+            ClientSession, "list_tools", autospec=True, side_effect=ClientSession.list_tools,
+        ) as list_tools:
+            namespace, cursors = await self.discover(
+                [
+                    {"tools": [], "nextCursor": "page-2"},
+                    {"tools": [{
+                        "name": "webiq___web", "description": "Web IQ web search",
+                        "inputSchema": {"type": "object"},
+                    }, {
+                        "name": "webiq___news", "description": "Web IQ news search",
+                        "inputSchema": {"type": "object"},
+                    }]},
+                ],
+                notebook_name="03-foundry-web-iq-toolbox.ipynb",
+                cell_id="discover-toolbox", headers={"Authorization": "Bearer foundry-token"},
+            )
+        self.assertEqual(cursors, [None, "page-2"])
+        self.assertEqual(
+            [call.kwargs["params"].cursor for call in list_tools.call_args_list],
+            [None, "page-2"],
+        )
+        for call in list_tools.call_args_list:
+            self.assertNotIn("cursor", call.kwargs)
+        self.assertEqual(namespace["web_tool_name"], "webiq___web")
+        self.assertEqual(namespace["tool_names"], ["webiq___web", "webiq___news"])
+        namespace["credential"].get_token.assert_called_once_with("https://ai.azure.com/.default")
+
+    async def test_toolbox_discovery_rejects_missing_news_tool(self):
+        with self.assertRaisesRegex(RuntimeError, "does not expose webiq___news"):
+            await self.discover(
+                [{"tools": [{
                     "name": "webiq___web", "description": "Web IQ web search",
                     "inputSchema": {"type": "object"},
-                }]},
-            ],
-            notebook_name="03-foundry-web-iq-toolbox.ipynb",
-            cell_id="discover-toolbox", headers={"Authorization": "Bearer foundry-token"},
-        )
-        self.assertEqual(cursors, [None, "page-2"])
-        self.assertEqual(namespace["web_tool_name"], "webiq___web")
-        namespace["credential"].get_token.assert_called_once_with("https://ai.azure.com/.default")
+                }]}],
+                notebook_name="03-foundry-web-iq-toolbox.ipynb",
+                cell_id="discover-toolbox", headers={"Authorization": "Bearer foundry-token"},
+            )
 
     async def test_toolbox_discovery_rejects_missing_namespaced_web_tool(self):
         with self.assertRaisesRegex(RuntimeError, "does not expose webiq___web"):
@@ -758,72 +792,45 @@ class AgentHelperTests(unittest.TestCase):
         exec(code_cell(notebook_name, "agent-helper"), namespace)
         return namespace
 
-    def test_approval_continues_same_conversation(self):
-        approval = SimpleNamespace(
-            type="mcp_approval_request", id="approval-1",
-            server_label="webiq", name="web", arguments='{"query":"public"}',
-        )
-        tool_call = SimpleNamespace(type="mcp_call")
-        first = SimpleNamespace(id="r1", output=[approval])
-        last = SimpleNamespace(id="r2", output=[tool_call], status="completed")
-        ns = self.namespace([first, last])
-        with patch("builtins.input", return_value="y"):
+    def test_toolbox_completed_response_returns_tool_history_without_prompting(self):
+        tool_call = SimpleNamespace(type="mcp_call", name="webiq___news")
+        completed = SimpleNamespace(id="r1", output=[tool_call], status="completed")
+        ns = self.namespace([completed])
+        with patch("builtins.input", side_effect=AssertionError("Must not prompt")):
             response, history = ns["ask_agent"]("public question")
-        self.assertIs(response, last)
-        self.assertEqual(len(history), 2)
-        continuation = ns["openai"].responses.create.call_args.kwargs
-        self.assertEqual(continuation["conversation"], "conversation-1")
-        self.assertTrue(continuation["input"][0]["approve"])
-        self.assertNotIn("previous_response_id", continuation)
+        self.assertIs(response, completed)
+        self.assertEqual(history, [tool_call])
+        ns["openai"].responses.create.assert_called_once_with(
+            conversation="conversation-1", input="public question",
+            extra_body={"agent_reference": ns["agent_reference"]},
+        )
 
-    def test_follow_up_resolves_approvals_in_original_conversation(self):
-        for notebook in ("03-foundry-web-iq-toolbox.ipynb",):
-            with self.subTest(notebook=notebook):
-                pending = set()
-                turns = []
+    def test_toolbox_follow_up_uses_original_conversation_without_approvals(self):
+        ns = self.namespace([
+            SimpleNamespace(id="r1", output=[], status="completed"),
+            SimpleNamespace(id="r2", output=[], status="completed"),
+        ])
+        with patch("builtins.input", side_effect=AssertionError("Must not prompt")):
+            ns["ask_agent"]("Initial research question")
+            ns["ask_agent"]("Follow-up research question")
+        calls = ns["openai"].responses.create.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([call.kwargs["input"] for call in calls],
+                         ["Initial research question", "Follow-up research question"])
+        for call in calls:
+            self.assertEqual(call.kwargs["conversation"], "conversation-1")
+            self.assertNotIn("previous_response_id", call.kwargs)
 
-                def create_response(**kwargs):
-                    self.assertEqual(kwargs.get("conversation"), "conversation-1")
-                    self.assertNotIn("previous_response_id", kwargs)
-                    if isinstance(kwargs["input"], str):
-                        self.assertFalse(pending, "Previous approval was not resolved.")
-                        turns.append(kwargs["input"])
-                        approval_id = f"approval-{len(turns)}"
-                        pending.add(approval_id)
-                        return SimpleNamespace(
-                            id=f"request-{len(turns)}",
-                            output=[SimpleNamespace(
-                                type="mcp_approval_request", id=approval_id,
-                                server_label="webiq", name="web", arguments="{}",
-                            )],
-                        )
-                    for decision in kwargs["input"]:
-                        self.assertTrue(decision["approve"])
-                        pending.remove(decision["approval_request_id"])
-                    return SimpleNamespace(
-                        id=f"completed-{len(turns)}", output=[], status="completed",
-                    )
-
-                ns = self.namespace(create_response, notebook_name=notebook)
-                with patch("builtins.input", return_value="y"), patch("builtins.print"):
-                    ns["ask_agent"]("Initial research question")
-                    ns["ask_agent"]("Follow-up research question")
-                self.assertEqual(len(turns), 2)
-                self.assertFalse(pending)
-
-    def test_approval_defaults_to_denied(self):
+    def test_toolbox_unexpected_approval_fails_without_prompting_or_submitting_a_decision(self):
         approval = SimpleNamespace(
             type="mcp_approval_request", id="approval-1",
             server_label="webiq", name="web", arguments="{}",
         )
-        ns = self.namespace([
-            SimpleNamespace(id="r1", output=[approval]),
-            SimpleNamespace(id="r2", output=[], status="completed"),
-        ])
-        with patch("builtins.input", return_value=""):
-            ns["ask_agent"]("public question")
-        decision = ns["openai"].responses.create.call_args.kwargs["input"][0]
-        self.assertFalse(decision["approve"])
+        ns = self.namespace([SimpleNamespace(id="r1", output=[approval])])
+        with patch("builtins.input", side_effect=AssertionError("Must not prompt")):
+            with self.assertRaisesRegex(RuntimeError, "Unexpected tool approval"):
+                ns["ask_agent"]("public question")
+        ns["openai"].responses.create.assert_called_once()
 
     def test_failed_response_is_not_success(self):
         for notebook in ("03-foundry-web-iq-toolbox.ipynb",):
@@ -947,27 +954,6 @@ class AgentHelperTests(unittest.TestCase):
         with patch("builtins.input", side_effect=AssertionError("Must not prompt")):
             with self.assertRaisesRegex(RuntimeError, "Unexpected tool approval"):
                 ns["ask_agent"]("public question")
-        self.assertEqual(ns["openai"].responses.create.call_count, 1)
-
-    def test_final_allowed_approval_can_complete(self):
-        approval = SimpleNamespace(
-            type="mcp_approval_request", id="approval-1",
-            server_label="webiq", name="web", arguments="{}",
-        )
-        final = SimpleNamespace(id="r2", output=[], status="completed")
-        ns = self.namespace([SimpleNamespace(id="r1", output=[approval]), final])
-        with patch("builtins.input", return_value="y"):
-            response, _ = ns["ask_agent"]("public question", max_approval_rounds=1)
-        self.assertIs(response, final)
-
-    def test_approval_limit_is_bounded(self):
-        approval = SimpleNamespace(
-            type="mcp_approval_request", id="approval-1",
-            server_label="webiq", name="web", arguments="{}",
-        )
-        ns = self.namespace([SimpleNamespace(id="r1", output=[approval])])
-        with self.assertRaisesRegex(RuntimeError, "Approval-round limit"):
-            ns["ask_agent"]("public question", max_approval_rounds=0)
         self.assertEqual(ns["openai"].responses.create.call_count, 1)
 
 

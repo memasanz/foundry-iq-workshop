@@ -15,12 +15,6 @@ class CSharpFoundryNotebookTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         notebook_runner.CSharpNotebookTests.setUpClass.__func__(cls)
-        helpers = cls.path / "c-sharp-console-apps" / "02-foundry-web-iq-agent"
-        helpers.mkdir()
-        shutil.copyfile(
-            ROOT / "c-sharp-console-apps" / "02-foundry-web-iq-agent" / "FoundryWorkshop.cs",
-            helpers / "FoundryWorkshop.cs",
-        )
         (cls.path / ".env").write_text("WEBIQ_API_KEY=old-key\nWORKSHOP_PREFIX=alice01\n", encoding="utf-8")
         (cls.path / ".env.azure").write_text(
             "WEBIQ_API_KEY=synthetic-test-key\n"
