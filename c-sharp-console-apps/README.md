@@ -1,73 +1,35 @@
 # C# console apps
 
-Explore the workshop APIs in ordinary .NET console projects, without Python or notebook tooling.
-Currently, [lab 01 - Web IQ APIs](01-web-iq-apis) is available; C# versions of the other labs have not been added yet.
+Explore the **Web & Foundry IQ Workshop** using ordinary .NET console projects, without Python or notebook tooling.
+Each lab has its own project folder and README with configuration, run commands and code explanations.
 
-[Workshop home](../README.md) | [C# setup guide](../docs/participants/c-sharp.md) | [Lab guide](../docs/labs/README.md)
+[Workshop home](../README.md) | [Participant guide](../docs/participants/README.md) | [C# setup guide](../docs/participants/c-sharp.md)
 
-## Before you run
+## Getting started
 
-Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
-Open a PowerShell terminal in the **repository root**, not this folder or an individual app folder.
-If your terminal is currently in `c-sharp-console-apps`, run `Set-Location ..` first.
+1. Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+2. Open a PowerShell terminal in the **repository root**, not this directory or an individual project folder.
+   If you are currently in `c-sharp-console-apps`, run `Set-Location ..` first.
+3. Choose a lab below and follow its README for required settings, permissions and commands.
+   Authentication and Azure prerequisites depend on the lab.
 
-Create the root settings file without overwriting an existing one:
+## Available labs
 
-```powershell
-if (-not (Test-Path .\.env)) { Copy-Item .\.env.example .\.env }
-```
+| Lab | What you will explore | Instructions |
+|---|---|---|
+| 01 - Web IQ APIs | Web Search, localized search, Browse, News, Images and Videos | [Set up and run lab 01](01-web-iq-apis/README.md) |
 
-Edit `.env` and set `WEBIQ_API_KEY` to your Web IQ **profile-issued API key**.
-Lab 01 needs no Azure sign-in or `.env.azure`; do not use a Foundry/Azure resource key.
-Never put the key in source code or commit it.
+Only lab 01 currently has a C# console app. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
 
-Settings load from the current working directory: `.env`, then `.env.azure` if present.
-File values override existing environment variables, and `.env.azure` wins for duplicate settings.
+## How the projects run
 
-## Run lab 01
+Use `dotnet run --project` to select a lab's project folder from the repository root.
+Arguments after `--` are passed to the application. Each lab README provides complete commands you can copy.
+`dotnet run` builds the project automatically.
 
-Start with help; this makes no service calls:
+Keep local settings in the repository-root `.env` and, when required, `.env.azure`.
+Follow the selected lab's instructions for which values to set; never put credentials in source code or commit them.
+Build outputs in `bin` and `obj` are ignored by Git.
 
-```powershell
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- --help
-```
-
-Choose **one API per run**:
-
-```powershell
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- web
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- localized
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- news
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- images
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- videos
-```
-
-Append a quoted public query to override the example query:
-
-```powershell
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- web 'OFAC guidance on potential sanctions name matches'
-```
-
-For Browse, copy a source URL from Web Search and pass it explicitly. You can also supply a question after the URL:
-
-```powershell
-dotnet run --project .\c-sharp-console-apps\01-web-iq-apis -- browse 'https://ofac.treasury.gov/faqs' 'How should a potential sanctions name match be reviewed?'
-```
-
-Browse makes no hidden search call. Pending crawls retry up to four times, with each wait capped at 120 seconds.
-HTTP failures print the status and response body and return a nonzero exit code; check `$LASTEXITCODE` in PowerShell.
-
-**Calls and retries incur Web IQ usage charges.** Use only public, non-sensitive queries.
-See [costs and responsible use](../docs/reference/README.md#costs-and-responsible-use).
-
-## Explore or check the code
-
-[Program.cs](01-web-iq-apis/Program.cs) shows the six request payloads.
-[Workshop.cs](01-web-iq-apis/Workshop.cs) contains the small settings, response-printing and retry-delay helpers.
-No additional NuGet packages are required; `dotnet run` builds the project automatically.
-
-From the repository root, run the offline checks without making service calls:
-
-```powershell
-dotnet run --project .\tests\c-sharp\WebIqLabTests.csproj
-```
+**Live runs can incur charges and create or change resources.**
+Read the lab's prerequisites and [costs and responsible use](../docs/reference/README.md#costs-and-responsible-use) before running it.

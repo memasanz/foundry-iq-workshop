@@ -28,6 +28,8 @@ Other commands: `localized`, `news`, `videos`. Append a quoted public query to a
 
 For a walkthrough of the VS Code extension and notebook interface, see Microsoft Learn's [Polyglot Notebooks: setting up your environment](https://learn.microsoft.com/en-us/training/modules/polyglot-notebooks/4-setting-up). This is a legacy guide and does not supersede the deprecation warning above.
 
+The [C# notebooks README](../../c-sharp-notebooks/README.md) walks through installation, an offline C# check, workshop settings and opening lab 01.
+
 If your organization allows the legacy tooling and you already have the **Polyglot Notebooks** VS Code extension, open [01-web-iq-apis.dib](../../c-sharp-notebooks/01-web-iq-apis.dib), select C#, and run the cells top to bottom. Use `c-sharp-notebooks` as the kernel's working directory so parent configuration paths and the shared-helper import resolve. The ordinary Python/Jupyter extension alone does not run `.dib` files. Keep public queries only and inspect source attribution; image previews can contact external hosts.
 
 The notebook follows Python lab 01's public research examples, request descriptions, response explanations, clean HTTP errors and bounded Browse retries. It is included for exploration, not as a maintained tooling recommendation.
