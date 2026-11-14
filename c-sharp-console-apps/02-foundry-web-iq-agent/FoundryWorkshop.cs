@@ -319,6 +319,37 @@ public sealed class FoundryWorkshop
         return true;
     }
 
+    public async Task ValidateWebIqConnectionAsync()
+    {
+        JsonObject? connection = await SendJsonAsync(HttpMethod.Get,
+            settings.ProjectEndpoint + "/connections/" + settings.ConnectionName + "?api-version=v1",
+            "https://ai.azure.com/");
+        if (connection == null || Text(connection["target"]) != McpUrl)
+            throw new InvalidOperationException("The existing Web IQ connection is missing or has the wrong target. Run connection first.");
+    }
+
+    public async Task ValidateAgentVersionAsync(JsonObject reference, string? toolboxUrl = null, string? toolboxConnectionName = null)
+    {
+        string name = RequiredText(reference, "name");
+        string baseName = settings.Prefix + (toolboxUrl == null ? "-webiq-agent" : "-webiq-toolbox-agent");
+        if (name != baseName && (toolboxUrl != null || !name.StartsWith(baseName + "-", StringComparison.Ordinal)))
+            throw new InvalidOperationException("Cached agent name does not belong to this prefix/lab. Run agent again.");
+        JsonObject? agent = await SendJsonAsync(HttpMethod.Get, settings.ProjectEndpoint + "/agents/"
+            + Uri.EscapeDataString(name) + "/versions/" + Uri.EscapeDataString(RequiredText(reference, "version"))
+            + "?api-version=v1", "https://ai.azure.com/");
+        JsonNode? definition = agent?["definition"];
+        JsonArray? tools = definition?["tools"] as JsonArray;
+        JsonNode? tool = tools?.Count == 1 ? tools[0] : null;
+        JsonArray allowed = toolboxUrl == null ? new JsonArray("web", "browse") : new JsonArray("webiq___web", "webiq___news");
+        if (Text(agent?["name"]) != name || Text(agent?["version"]) != RequiredText(reference, "version")
+            || Text(definition?["kind"]) != "prompt" || Text(definition?["model"]) != settings.Model
+            || Text(tool?["type"]) != "mcp" || Text(tool?["server_label"]) != (toolboxUrl == null ? "webiq" : "webiq_toolbox")
+            || Text(tool?["server_url"]) != (toolboxUrl ?? McpUrl)
+            || Text(tool?["project_connection_id"]) != (toolboxConnectionName ?? settings.ConnectionId)
+            || Text(tool?["require_approval"]) != "never" || !JsonNode.DeepEquals(tool?["allowed_tools"], allowed))
+            throw new InvalidOperationException("Pinned agent is missing or its model, endpoint, connection or policy differs. Run agent again before asking.");
+    }
+
     public async Task<JsonObject?> CreateAgentVersionAsync(JsonObject definition)
     {
         string baseName = settings.Prefix + "-webiq-agent";

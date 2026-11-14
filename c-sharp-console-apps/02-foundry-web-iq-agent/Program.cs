@@ -29,24 +29,34 @@ public static class FoundryWebIqProgram
 
                 dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- discover
                 dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- run
-                Append an optional public question after run.
+                Commands (each step performs only its named action and necessary reads):
 
                 discover: lists MCP tools using WEBIQ_API_KEY; no Azure sign-in or resource writes.
+                connection: create/update the API-key project connection (no discovery or agent).
+                agent: publish/reuse an agent version; requires the existing connection, never writes it.
+                ask [public question]: validate the cached agent, create a conversation, ask and verify once.
+                follow-up [public question]: ask in the saved conversation with the SAME pinned agent version.
                 run: requires the Foundry settings, WORKSHOP_PREFIX and Azure CLI sign-in.
                 It updates the connection, creates an agent version and conversation, asks the
                 question, verifies MCP retrieval and always follows up after a completed response.
+                Step references persist in ignored .workshop\lab02-<prefix>.json (no secrets or outputs).
+                Only discover, connection and run read/require WEBIQ_API_KEY. Help reads no configuration.
                 Resources are retained. Model and Web IQ calls incur charges; use public queries.
                 """);
             return 0;
         }
-        if (command is not ("discover" or "run") || (command == "discover" && args.Length != 1))
+        if (command is not ("discover" or "connection" or "agent" or "ask" or "follow-up" or "run")
+            || (command is "discover" or "connection" or "agent" && args.Length != 1))
         {
-            Console.WriteLine("Use discover or run [public question]. Run --help for setup guidance.");
+            Console.WriteLine("Use discover, connection, agent, ask, follow-up or run. Run --help for setup guidance.");
             return 2;
         }
 
-        FoundrySettings settings = FoundrySettings.Load(".", requireAzure: command == "run");
+        FoundrySettings settings = FoundrySettings.Load(".", requireAzure: command != "discover",
+            requireApiKey: command is "discover" or "connection" or "run");
         var lab = new FoundryWorkshop(client, settings, getToken);
+        if (command is not ("run" or "discover"))
+            return await RunStepAsync(command, args, settings, lab);
         JsonArray? tools = await lab.DiscoverToolsAsync();
         if (tools == null)
             return 1;
@@ -72,5 +82,44 @@ public static class FoundryWebIqProgram
         JsonObject? followUp = await lab.AskAsync(FoundryWorkshop.FollowUpQuestion, conversation, agent);
         Console.WriteLine("Resources retained. Reuse the same WORKSHOP_PREFIX for lab 03.");
         return grounded && followUp != null ? 0 : 1;
+    }
+
+    private static async Task<int> RunStepAsync(string command, string[] args, FoundrySettings settings, FoundryWorkshop lab)
+    {
+        WorkshopState state = WorkshopState.Load(settings, "lab02");
+        if (command == "connection")
+        {
+            if (!await lab.ConfigureConnectionAsync()) return 1;
+            state.ClearAgent();
+            state.Save();
+            return 0;
+        }
+        if (command == "agent")
+        {
+            await lab.ValidateWebIqConnectionAsync();
+            var created = await lab.CreateAgentVersionAsync(FoundryWorkshop.CreateDefinition(settings.Model));
+            if (created == null) return 1;
+            state.SetAgent(created);
+            state.Save();
+            return 0;
+        }
+        JsonObject agent = state.AgentReference();
+        JsonObject? conversation = command == "follow-up" ? state.ConversationReference() : null;
+        await lab.ValidateWebIqConnectionAsync();
+        await lab.ValidateAgentVersionAsync(agent);
+        // Invalidate completion BEFORE a new request, so an interrupted/failed question cannot reuse stale success.
+        if (command == "ask") state.ClearConversation();
+        else state.InitialCompleted = false;
+        state.Save();
+        conversation ??= await lab.CreateConversationAsync();
+        if (conversation == null) return 1;
+        string question = args.Length > 1 ? string.Join(" ", args.Skip(1))
+            : command == "ask" ? FoundryWorkshop.Question : FoundryWorkshop.FollowUpQuestion;
+        JsonObject? response = await lab.AskAsync(question, conversation, agent);
+        if (response == null) return 1;
+        state.ConversationId = (string?)conversation["id"];
+        state.InitialCompleted = true;
+        state.Save();
+        return lab.VerifyRetrieval(response) ? 0 : 1;
     }
 }

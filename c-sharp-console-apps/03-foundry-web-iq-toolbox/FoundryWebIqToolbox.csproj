@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="..\01-web-iq-apis\Workshop.cs" Link="Workshop.cs" />
     <Compile Include="..\02-foundry-web-iq-agent\FoundryWorkshop.cs" Link="FoundryWorkshop.cs" />
+    <Compile Include="..\02-foundry-web-iq-agent\WorkshopState.cs" Link="WorkshopState.cs" />
   </ItemGroup>
 </Project>
