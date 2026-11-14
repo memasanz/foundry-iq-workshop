@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently, [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb) is available.
+Currently, [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb) and [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb) are available.
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -85,3 +85,18 @@ See [costs and responsible use](../docs/reference/README.md#costs-and-responsibl
 
 Unlike `.dib`, `.ipynb` can save execution outputs. Clear outputs before committing or sharing the source notebook;
 `.gitignore` ignores separate executed copies, not outputs embedded in this file.
+
+## 5. Open and run lab 02
+
+Lab 02 additionally requires Azure CLI, sign-in to the workshop tenant, a deployed Foundry project/model,
+the facilitator's `.env.azure`, and `WORKSHOP_PREFIX` in `.env`.
+Use **Foundry Project Manager on the project** or the workshop's inherited **Foundry Owner** access.
+See [lab 02 prerequisites](../c-sharp-console-apps/02-foundry-web-iq-agent/README.md#prerequisites).
+
+Open [02-foundry-web-iq-agent.ipynb](02-foundry-web-iq-agent.ipynb) with the same C# kernel and working directory.
+It preserves Python lab 02's diagrams, Inspector screenshots, tool discovery, connection/agent explanations,
+`web`/`browse` allowlist, Responses API verification and always-on follow-up after a completed response.
+The helper uses `HttpClient` and Azure CLI tokens, with no extra NuGet packages or automatic retries.
+Failed discovery prevents later resource cells from writing to Azure. Resources are retained for lab 03.
+
+**Full runs incur model and Web IQ charges**, including the follow-up. Use public queries and clear outputs before sharing.

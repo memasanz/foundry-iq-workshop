@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover lab 01. Choose the supported console app or the optional legacy Polyglot Notebook.
+C# equivalents currently cover labs 01 and 02. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -36,3 +36,47 @@ The notebook follows Python lab 01's public research examples, request descripti
 
 Review [costs and responsible use](../reference/README.md#costs-and-responsible-use)
 before live requests, or use the [offline lab 01 checks](../reference/README.md#offline-checks-for-lab-01).
+
+### C# console app (lab 02)
+
+Lab 02 follows the Python notebook's MCP discovery, project connection, prompt agent, **Responses API**,
+retrieval verification and follow-up. It uses the same `.NET 10` SDK and simple settings loader as lab 01,
+with `HttpClient` and Azure CLI tokens rather than SDK packages. No additional NuGet packages are needed.
+
+For discovery only, your profile-issued `WEBIQ_API_KEY` is sufficient:
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- discover
+```
+
+For the full lab, install Azure CLI, sign in to `AZURE_TENANT_ID`, obtain the shared `.env.azure`,
+and set `WORKSHOP_PREFIX` in `.env`. You need a deployed Foundry project/model and
+**Foundry Project Manager on the project** or the workshop's inherited **Foundry Owner** access.
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- --help
+dotnet run --project .\c-sharp-console-apps\02-foundry-web-iq-agent -- run
+```
+
+The full run creates/updates the connection, creates an agent version and conversation, and incurs
+model and Web IQ charges. A completed initial response always triggers another billable follow-up.
+Resources are retained and shared across the language tracks when you reuse the same prefix.
+See [lab 02 configuration, permissions and behavior](../../c-sharp-console-apps/02-foundry-web-iq-agent/README.md).
+
+### Optional legacy C# notebook (lab 02)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[02-foundry-web-iq-agent.ipynb](../../c-sharp-notebooks/02-foundry-web-iq-agent.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as the working directory. It preserves the Python notebook's diagrams,
+MCP Inspector screenshots, tool descriptions, allowlist, clean HTTP errors and guarded follow-up.
+Complete the full lab 02 prerequisites above before starting.
+
+Offline checks use synthetic settings/tokens and mock HTTP responses:
+
+```powershell
+dotnet run --project .\tests\c-sharp-foundry\FoundryLabTests.csproj
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_csharp_foundry_notebook.py
+```
+
+The second check requires the optional legacy `.NET Interactive` tool plus the repository's Python test
+environment; Python is a test-runner dependency here, not a requirement to use the C# notebook in VS Code.

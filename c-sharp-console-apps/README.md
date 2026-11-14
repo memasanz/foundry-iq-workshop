@@ -18,8 +18,9 @@ Each lab has its own project folder and README with configuration, run commands 
 | Lab | What you will explore | Instructions |
 |---|---|---|
 | 01 - Web IQ APIs | Web Search, localized search, Browse, News, Images and Videos | [Set up and run lab 01](01-web-iq-apis/README.md) |
+| 02 - Foundry agent + Web IQ | MCP discovery, authenticated project connection, prompt agent, Responses API and follow-up | [Set up and run lab 02](02-foundry-web-iq-agent/README.md) |
 
-Only lab 01 currently has a C# console app. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
+Labs 01 and 02 currently have C# console apps. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
 
 ## How the projects run
 

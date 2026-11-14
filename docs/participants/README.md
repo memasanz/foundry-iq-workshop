@@ -9,10 +9,10 @@
 | Code option | Available labs | How to explore |
 |---|---|---|
 | [Python notebooks](python.md) | 01-14 | Python/Jupyter cells; follow the Python setup guide. |
-| [C# console apps](c-sharp.md#c-console-app-lab-01) | 01 | Supported .NET 10 console app; choose one API per run. |
-| [C# Polyglot Notebooks](c-sharp.md#optional-legacy-c-notebook-lab-01) | 01 | C# cells in an optional legacy Polyglot Notebook (`.ipynb`); deprecated tooling. |
+| [C# console apps](c-sharp.md) | 01-02 | Supported .NET 10 console apps; direct APIs or the Foundry agent flow. |
+| [C# Polyglot Notebooks](c-sharp.md) | 01-02 | C# cells in optional legacy Polyglot Notebooks (`.ipynb`); deprecated tooling. |
 
-The tracks share the root `.env` and `.env.azure`. Labs 02-14 have not been translated to C# yet. No Python installation is required for the console app.
+The tracks share the root `.env` and `.env.azure`. Labs 03-14 have not been translated to C# yet. No Python installation is required for the console apps.
 
 Create your local settings file without replacing an existing one:
 
@@ -43,7 +43,7 @@ Every notebook starts with its required participant permissions and facilitator/
 
 Notebook 02 stores the workshop Web IQ key in the `{prefix}-webiq-mcp` Foundry connection; sufficiently privileged project members can access it. Notebooks 02 and 03 derive the connection name from `WORKSHOP_PREFIX`, so keep the same prefix in both. Use a workshop-only key and rotate/revoke it afterward. Keep the connection until both labs are finished.
 
-Notebook 02 reuses a matching `{prefix}-webiq-agent` or older `{prefix}-webiq-agent-<session>` and creates a new version on each run. With no matching agent, it creates the stable `{prefix}-webiq-agent` name. It automatically permits the allowlisted `web` tool, requires `WEBIQ_API_KEY` and `WORKSHOP_PREFIX` in configuration rather than prompting, and retains its resources. Queries must remain public and non-sensitive. Notebook 03 still demonstrates interactive approvals.
+Notebook 02 reuses a matching `{prefix}-webiq-agent` or older `{prefix}-webiq-agent-<session>` and creates a new version on each run. With no matching agent, it creates the stable `{prefix}-webiq-agent` name. It automatically permits the allowlisted `web` and `browse` tools, requires `WEBIQ_API_KEY` and `WORKSHOP_PREFIX` in configuration rather than prompting, and retains its resources. Queries must remain public and non-sensitive. Notebook 03 still demonstrates interactive approvals.
 
 Notebook 03 publishes versions under the stable `{prefix}-webiq-toolbox` name. Its agents and version-pinned toolbox connections have prefix-based session names, and all resources are retained when local clients close.
 

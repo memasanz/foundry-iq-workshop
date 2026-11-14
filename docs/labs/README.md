@@ -14,6 +14,9 @@ Start with **01 -> 02 -> 03**. Allow roughly 2-3 hours, including setup and disc
 | [02 - Foundry agent + Web IQ](../../python-notebooks/02-foundry-web-iq-agent.ipynb) | 35 min | Create or update a Web IQ agent, run searches without approval prompts, and inspect its answers. |
 | [03 - Foundry agent + Web IQ toolbox](../../python-notebooks/03-foundry-web-iq-toolbox.ipynb) | 30-40 min | Reuse notebook 02's connection through a toolbox: a reusable collection of tools for agents. |
 
+C# alternatives for labs 01 and 02 are available as [supported .NET 10 console apps](../../c-sharp-console-apps/README.md)
+or [optional legacy Polyglot Notebooks](../../c-sharp-notebooks/README.md). See [C# setup](../participants/c-sharp.md).
+
 ### Track 2: Your documents and Foundry IQ
 
 Compare **04, 05 and 06**: text splitting in an indexer, PDF extraction/chunking with Content Understanding, and Python chunking with push ingestion. **07 and 08 are alternative SharePoint approaches**; notebook 08 does not require notebook 07's app registration.

@@ -23,7 +23,29 @@ You can take one track or work through the whole workshop. The notebooks show th
 
 ## Choose your code
 
-**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore lab 01 in an optional [Polyglot Notebook](c-sharp-notebooks/01-web-iq-apis.ipynb) or a [.NET 10 console app](c-sharp-console-apps/01-web-iq-apis). Polyglot Notebooks uses deprecated tooling; the console app is the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
+**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore labs 01 and 02 in optional [Polyglot Notebooks](c-sharp-notebooks) or [.NET 10 console apps](c-sharp-console-apps). Polyglot Notebooks uses deprecated tooling; the console apps are the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
+
+## Prerequisites
+
+| Code option | What to install | Setup instructions |
+|---|---|---|
+| **Python notebooks** | Python 3.11+, VS Code with its Jupyter extension or JupyterLab, and the packages in `requirements.txt`. | [Python setup](docs/participants/python.md) |
+| **C# console apps (recommended)** | The [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) and a terminal. No Python or notebook extensions are needed. | [C# console setup](c-sharp-console-apps/README.md) |
+| **C# notebooks (legacy)** | VS Code, the deprecated Polyglot Notebooks extension, and a .NET runtime compatible with its installed kernel. Python is not required for this VS Code path. | [C# notebook setup and compatibility warnings](c-sharp-notebooks/README.md) |
+
+For Azure-backed labs, also install [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) and obtain the workshop configuration and permissions from your facilitator. Lab 01's direct Web IQ calls require a **profile-issued API key**, not Azure sign-in. Follow the [shared settings guide](docs/participants/README.md#workshop-settings-and-resource-names); keep credentials out of source code and notebook outputs.
+
+## MCP Inspector (optional)
+
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) provides a browser interface for discovering MCP tools, inspecting their schemas and testing calls. Install a supported [Node.js](https://nodejs.org/en/download) version first; see the Inspector's current [requirements](https://github.com/modelcontextprotocol/inspector#quick-start-development).
+
+```powershell
+npx @modelcontextprotocol/inspector
+```
+
+`npx` downloads and runs the npm package; a global installation is not required.
+
+For Web IQ, use **Streamable HTTP**, enter `https://api.microsoft.ai/v3/mcp`, and configure the `x-apikey` request header with the `WEBIQ_API_KEY` value from your `.env` file locally. See [notebook 02](python-notebooks/02-foundry-web-iq-agent.ipynb) for an illustrated walkthrough. Keep credentials out of commands, exported configurations and Git. Tool calls incur usage charges; use public, non-sensitive queries.
 
 ## Workshop guides
 

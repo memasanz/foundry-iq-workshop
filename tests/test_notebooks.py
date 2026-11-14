@@ -3,6 +3,7 @@ import json
 import os
 import unittest
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -10,8 +11,10 @@ from unittest.mock import Mock, patch
 import httpx
 import nbformat
 import requests
+from dotenv import load_dotenv
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
+from mcp.types import PaginatedRequestParams
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,7 +85,7 @@ class NotebookStructureTests(unittest.TestCase):
 
 
 class AttendeeAliasTests(unittest.TestCase):
-    def configure(self, number, alias, working_directory=ROOT, **overrides):
+    def configure(self, number, alias, working_directory=ROOT, dotenv_loader=None, **overrides):
         settings = {
             "AZURE_TENANT_ID": "11111111-1111-1111-1111-111111111111",
             "AZURE_SEARCH_ENDPOINT": "https://workshop.search.windows.net",
@@ -107,7 +110,7 @@ class AttendeeAliasTests(unittest.TestCase):
         namespace = {}
         with (
             patch.dict(os.environ, settings, clear=True),
-            patch("dotenv.load_dotenv"),
+            patch("dotenv.load_dotenv", side_effect=dotenv_loader),
             patch("pathlib.Path.cwd", return_value=working_directory),
             patch("azure.identity.AzureCliCredential"),
             patch("azure.identity.get_bearer_token_provider"),
@@ -122,6 +125,31 @@ class AttendeeAliasTests(unittest.TestCase):
         for number in range(2, 15):
             with self.subTest(notebook=number):
                 self.configure(number, "alice01", working_directory=ROOT / "python-notebooks")
+
+    def test_foundry_setup_loads_parent_env_files_and_overrides_stale_settings(self):
+        files = {
+            r"..\.env": "WEBIQ_API_KEY=env-test-key\nWORKSHOP_PREFIX=alice01\n",
+            r"..\.env.azure": (
+                "WORKSHOP_PREFIX=bob02\n"
+                "AZURE_AI_PROJECT_ENDPOINT=https://fresh.services.ai.azure.com/api/projects/workshop\n"
+            ),
+        }
+
+        def load_settings(path, override=False):
+            return load_dotenv(stream=StringIO(files[path]), override=override)
+
+        loader = Mock(side_effect=load_settings)
+        namespace = self.configure(2, "processalias", dotenv_loader=loader)
+        self.assertEqual([call.args[0] for call in loader.call_args_list],
+                         [r"..\.env", r"..\.env.azure"])
+        self.assertTrue(all(call.kwargs["override"] for call in loader.call_args_list))
+        self.assertEqual(namespace["api_key"], "env-test-key")
+        self.assertEqual(namespace["prefix"], "bob02")
+        self.assertEqual(namespace["connection_name"], "bob02-webiq-mcp")
+        namespace["AIProjectClient"].assert_called_once_with(
+            endpoint="https://fresh.services.ai.azure.com/api/projects/workshop",
+            credential=namespace["credential"],
+        )
 
     def test_two_attendees_have_disjoint_created_names_and_local_folders(self):
         objects = {
@@ -457,7 +485,7 @@ class DirectApiCellTests(unittest.TestCase):
 class AgentDiscoveryTests(unittest.IsolatedAsyncioTestCase):
     async def discover(
         self, pages, notebook_name="02-foundry-web-iq-agent.ipynb",
-        cell_id="discover", headers=None,
+        cell_id="discover", headers=None, failure=None, failure_method="initialize",
     ):
         headers = headers or {"x-apikey": "test-key"}
         cursors = []
@@ -472,6 +500,10 @@ class AgentDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             if request.method == "DELETE":
                 return httpx.Response(200)
             message = json.loads(request.content)
+            if message["method"] == failure_method and failure is not None:
+                if isinstance(failure, BaseException):
+                    raise failure
+                return failure
             if message["method"] == "initialize":
                 result = {
                     "protocolVersion": message["params"]["protocolVersion"],
@@ -492,39 +524,117 @@ class AgentDiscoveryTests(unittest.IsolatedAsyncioTestCase):
         client = httpx.AsyncClient(
             headers=headers, transport=httpx.MockTransport(handle),
         )
-        factory = Mock(return_value=client)
+        def create_client(**options):
+            client.event_hooks = options.get("event_hooks", {})
+            return client
+
+        factory = Mock(side_effect=create_client)
         namespace = {
-            "httpx": SimpleNamespace(AsyncClient=factory),
+            "httpx": SimpleNamespace(
+                AsyncClient=factory, HTTPStatusError=httpx.HTTPStatusError,
+                TransportError=httpx.TransportError,
+            ),
             "streamable_http_client": streamable_http_client,
             "ClientSession": ClientSession,
+            "PaginatedRequestParams": PaginatedRequestParams,
             "mcp_url": "https://api.microsoft.ai/v3/mcp",
             "api_key": "test-key",
+            "available_tools": [SimpleNamespace(name="stale-tool")],
+            "available_names": {"stale-tool"},
             "credential": Mock(get_token=Mock(return_value=SimpleNamespace(token="foundry-token"))),
             "toolbox_mcp_url": "https://example.services.ai.azure.com/api/projects/test/toolboxes/webiq/versions/1/mcp?api-version=v1",
         }
         source = code_cell(notebook_name, cell_id)
         try:
-            with patch("builtins.print"):
+            with patch("builtins.print") as output:
                 await eval(compile(source, "discover", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT), namespace)
         finally:
             self.assertTrue(client.is_closed)
-        factory.assert_called_once_with(headers=headers, timeout=60)
+        expected_options = {"headers": headers, "timeout": 60}
+        if notebook_name == "02-foundry-web-iq-agent.ipynb":
+            expected_options["event_hooks"] = {"response": [namespace["read_mcp_error_body"]]}
+        factory.assert_called_once_with(**expected_options)
+        namespace["printed_output"] = output.call_args_list
         return namespace, cursors
 
     async def test_authenticated_discovery_uses_real_mcp_client_and_paginates(self):
         def tool(name):
             return {"name": name, "description": name, "inputSchema": {"type": "object"}}
 
-        namespace, cursors = await self.discover([
-            {"tools": [tool("news")], "nextCursor": "page-2"},
-            {"tools": [tool("web")]},
-        ])
+        with patch.object(
+            ClientSession, "list_tools", autospec=True, side_effect=ClientSession.list_tools,
+        ) as list_tools:
+            namespace, cursors = await self.discover([
+                {"tools": [tool("news")], "nextCursor": "page-2"},
+                {"tools": [tool("web")]},
+            ])
         self.assertEqual(namespace["available_names"], {"news", "web"})
         self.assertEqual(cursors, [None, "page-2"])
+        self.assertEqual(
+            [call.kwargs["params"].cursor for call in list_tools.call_args_list],
+            [None, "page-2"],
+        )
+        for call in list_tools.call_args_list:
+            self.assertNotIn("cursor", call.kwargs)
 
     async def test_discovery_without_web_tool_fails_explicitly(self):
         with self.assertRaisesRegex(RuntimeError, "does not expose web search"):
             await self.discover([{"tools": []}])
+
+    async def test_discovery_http_errors_print_streamed_bodies_and_clear_stale_tools(self):
+        for status in (401, 429):
+            for method in ("initialize", "tools/list"):
+                with self.subTest(status=status, method=method):
+                    body = "Authentication or rate-limit error: " + "x" * 9000
+
+                    class ErrorBody(httpx.AsyncByteStream):
+                        async def __aiter__(self):
+                            yield body.encode()
+
+                    failure = httpx.Response(
+                        status, stream=ErrorBody(),
+                        headers={"retry-after": "30", "retry-after-ms": "30000"},
+                    )
+                    ns, _ = await self.discover([], failure=failure, failure_method=method)
+                    self.assertTrue(ns["discovery_failed"])
+                    self.assertEqual(ns["available_tools"], [])
+                    self.assertEqual(ns["available_names"], set())
+                    self.assertTrue(failure.is_closed)
+                    self.assertEqual(failure.text, body)
+                    calls = ns["printed_output"]
+                    self.assertTrue(any(call.args[:2] == ("HTTP:", status) for call in calls))
+                    self.assertTrue(any(call.args == (body[:8000],) for call in calls))
+                    if status == 429:
+                        self.assertTrue(any(call.args == ("retry-after:", "30") for call in calls))
+                    self.assertNotIn("Traceback", str(calls))
+                    self.assertNotIn("test-key", str(calls))
+
+    async def test_discovery_handles_transport_errors_and_nested_http_error_groups(self):
+        request = httpx.Request("POST", "https://example.com/mcp")
+        http_error = httpx.HTTPStatusError(
+            "Unauthorized", request=request,
+            response=httpx.Response(401, text="Nested authentication failure", request=request),
+        )
+        failures = (
+            httpx.ReadTimeout("Request timed out", request=request),
+            ExceptionGroup("outer", [ExceptionGroup("inner", [http_error])]),
+        )
+        for failure in failures:
+            with self.subTest(failure=type(failure).__name__):
+                ns, _ = await self.discover([], failure=failure)
+                self.assertTrue(ns["discovery_failed"])
+                self.assertEqual(ns["available_tools"], [])
+                self.assertEqual(ns["available_names"], set())
+                printed = str(ns["printed_output"])
+                self.assertIn(
+                    "Request timed out" if isinstance(failure, httpx.ReadTimeout) else "Nested authentication failure",
+                    printed,
+                )
+                self.assertNotIn("Traceback", printed)
+
+    async def test_discovery_does_not_hide_unexpected_programming_errors(self):
+        with self.assertRaises(ExceptionGroup):
+            await self.discover([], failure=RuntimeError("Unexpected failure"))
 
     async def test_toolbox_discovery_uses_foundry_token_and_namespaced_tools(self):
         namespace, cursors = await self.discover(
@@ -591,7 +701,7 @@ class WebIqAgentReuseTests(unittest.TestCase):
             definition = call.kwargs["definition"]
             self.assertEqual(definition.model, "workshop-chat")
             self.assertEqual(definition.tools[0].require_approval, "never")
-            self.assertEqual(definition.tools[0].allowed_tools, ["web"])
+            self.assertEqual(definition.tools[0].allowed_tools, ["web", "browse"])
             self.assertEqual(definition.tools[0].project_connection_id, self.ns["connection_id"])
         self.assertEqual(self.project.get_openai_client().conversations.create.call_count, 2)
 
@@ -716,22 +826,117 @@ class AgentHelperTests(unittest.TestCase):
         self.assertFalse(decision["approve"])
 
     def test_failed_response_is_not_success(self):
-        for notebook in ("02-foundry-web-iq-agent.ipynb", "03-foundry-web-iq-toolbox.ipynb"):
+        for notebook in ("03-foundry-web-iq-toolbox.ipynb",):
             with self.subTest(notebook=notebook):
                 ns = self.namespace([SimpleNamespace(id="r1", output=[], status="failed")], notebook)
                 with self.assertRaisesRegex(RuntimeError, "status failed"):
                     ns["ask_agent"]("public question")
 
+    def test_noninteractive_http_errors_clear_stale_answers_and_print_bounded_diagnostics(self):
+        from openai import APIStatusError, RateLimitError
+
+        for status, error_type in ((429, RateLimitError), (500, APIStatusError)):
+            with self.subTest(status=status):
+                body = "Request failed: " + "x" * 9000
+                http_error = httpx.Response(
+                    status, text=body, headers={"retry-after": "30", "retry-after-ms": "30000"},
+                    request=httpx.Request("POST", "https://example.com/responses"),
+                )
+                error = error_type("Request failed", response=http_error, body=None)
+                ns = self.namespace([error], "02-foundry-web-iq-agent.ipynb")
+                ns.update(
+                    response=SimpleNamespace(output_text="stale answer"),
+                    tool_history=[SimpleNamespace(type="mcp_call")],
+                    calls=["stale call"], successful=["stale success"],
+                )
+                with patch("builtins.print") as output:
+                    exec(code_cell("02-foundry-web-iq-agent.ipynb", "ask"), ns)
+                    exec(code_cell("02-foundry-web-iq-agent.ipynb", "verify"), ns)
+                    follow_up = code_cell("02-foundry-web-iq-agent.ipynb", "follow-up")
+                    exec(follow_up, ns)
+                self.assertIsNone(ns["response"])
+                self.assertEqual(ns["tool_history"], [])
+                self.assertEqual(ns["calls"], [])
+                self.assertEqual(ns["successful"], [])
+                ns["openai"].responses.create.assert_called_once()
+                self.assertTrue(any(call.args[:2] == ("HTTP:", status) for call in output.call_args_list))
+                self.assertTrue(any(call.args == (body[:8000],) for call in output.call_args_list))
+                if status == 429:
+                    self.assertTrue(any(call.args == ("retry-after:", "30") for call in output.call_args_list))
+                    self.assertTrue(any(call.args == ("retry-after-ms:", "30000") for call in output.call_args_list))
+                printed = str(output.call_args_list)
+                self.assertNotIn("stale answer", printed)
+                self.assertNotIn("Traceback", printed)
+
+    def test_noninteractive_follow_up_connection_error_does_not_display_old_answer(self):
+        from openai import APIConnectionError
+
+        error = APIConnectionError(request=httpx.Request("POST", "https://example.com/responses"))
+        ns = self.namespace([error], "02-foundry-web-iq-agent.ipynb")
+        ns.update(
+            response=SimpleNamespace(output_text="initial answer"),
+            follow_up=SimpleNamespace(output_text="stale follow-up"),
+            follow_up_history=["stale call"],
+        )
+        source = code_cell("02-foundry-web-iq-agent.ipynb", "follow-up")
+        with patch("builtins.print") as output:
+            exec(source, ns)
+        self.assertIsNone(ns["follow_up"])
+        self.assertEqual(ns["follow_up_history"], [])
+        ns["openai"].responses.create.assert_called_once()
+        self.assertTrue(any(call.args[0] == "Request failed:" for call in output.call_args_list))
+        self.assertNotIn("stale follow-up", str(output.call_args_list))
+
+    def test_noninteractive_failed_or_incomplete_response_prints_details(self):
+        for status in ("failed", "incomplete"):
+            with self.subTest(status=status):
+                response = SimpleNamespace(
+                    id="r1", output=[], status=status,
+                    error={"message": "request failed"} if status == "failed" else None,
+                    incomplete_details={"reason": "max_output_tokens"} if status == "incomplete" else None,
+                )
+                ns = self.namespace([response], "02-foundry-web-iq-agent.ipynb")
+                with patch("builtins.print") as output:
+                    result, history = ns["ask_agent"]("public question")
+                self.assertIsNone(result)
+                self.assertEqual(history, [])
+                printed = str(output.call_args_list)
+                self.assertIn(f"status {status}", printed)
+                self.assertIn("request failed" if status == "failed" else "max_output_tokens", printed)
+
+    def test_noninteractive_verification_reports_failures_without_claiming_success(self):
+        for error, evidence, answer, expected in (
+            ("HTTP 429", None, "Retrieval failed.", "No successful Web IQ MCP retrieval"),
+            (None, "Retrieved evidence", "", "Retrieval ran but no final answer"),
+            (None, "Retrieved evidence", "Answer with sources.", "Observed 1 successful"),
+        ):
+            with self.subTest(expected=expected):
+                ns = {
+                    "response": SimpleNamespace(output_text=answer),
+                    "tool_history": [SimpleNamespace(
+                        type="mcp_call", server_label="webiq", name="web",
+                        error=error, output=evidence, arguments="{}",
+                    )],
+                }
+                with patch("builtins.print") as output:
+                    exec(code_cell("02-foundry-web-iq-agent.ipynb", "verify"), ns)
+                printed = str(output.call_args_list)
+                self.assertIn(expected, printed)
+                if not expected.startswith("Observed"):
+                    self.assertNotIn("Observed", printed)
+
     def test_noninteractive_questions_and_follow_up_share_conversation(self):
         first = SimpleNamespace(id="r1", output=[SimpleNamespace(type="mcp_call")], status="completed")
-        last = SimpleNamespace(id="r2", output=[], status="completed")
+        last = SimpleNamespace(id="r2", output=[], status="completed", output_text="Follow-up answer.")
         ns = self.namespace([first, last], "02-foundry-web-iq-agent.ipynb")
-        with patch("builtins.input", side_effect=AssertionError("Must not prompt")):
+        with patch("builtins.input", side_effect=AssertionError("Must not prompt")), patch("builtins.print"):
             response, history = ns["ask_agent"]("public question")
-            follow_up, _ = ns["ask_agent"]("follow-up question")
+            ns["response"] = response
+            exec(code_cell("02-foundry-web-iq-agent.ipynb", "follow-up"), ns)
         self.assertIs(response, first)
         self.assertEqual(history, first.output)
-        self.assertIs(follow_up, last)
+        self.assertIs(ns["follow_up"], last)
+        self.assertEqual(ns["openai"].responses.create.call_count, 2)
         for call in ns["openai"].responses.create.call_args_list:
             self.assertEqual(call.kwargs["conversation"], "conversation-1")
 

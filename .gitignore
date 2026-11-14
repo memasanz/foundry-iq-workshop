@@ -14,3 +14,5 @@ c-sharp-console-apps/**/bin/
 c-sharp-console-apps/**/obj/
 tests/c-sharp/**/bin/
 tests/c-sharp/**/obj/
+tests/c-sharp-foundry/**/bin/
+tests/c-sharp-foundry/**/obj/
