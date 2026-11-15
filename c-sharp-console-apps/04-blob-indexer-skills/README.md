@@ -24,7 +24,29 @@ system-assigned identity needs **Storage Blob Data Reader** and embedding
 inference access (**Cognitive Services OpenAI User**, or the broader
 **Cognitive Services User** granted by this repository). Enable semantic ranker.
 
-## Separate commands
+## Run one step at a time
+
+| Command | What happens | Result |
+|---|---|---|
+| `upload` | Upload the two synthetic TXT files from `data\search` to `<prefix>/blob/` in the existing Blob container. Overwrite only those sample blobs. | Source documents ready for the indexer; no chunks or embeddings are generated yet. |
+| `data-source` | Create or update the Search data source, pointing to the existing container and prefixed folder using Storage's resource ID. Search uses its managed identity to read the blobs. | A registered source for ingestion; does not upload files or start indexing. |
+| `index` | Create or update the chunk index's fields, 1,536-dimensional vector field, vectorizer and semantic configuration. | The destination schema for searchable chunks; defining it does not populate or backfill documents. |
+| `skillset` | Create or update the Text Split, embedding and Shaper skills, plus index projections. Configure 1,000-character chunks with 200-character overlap and preserve filename/source URL. | The enrichment recipe; saving it does not execute skills or generate embeddings. |
+| `indexer` | Create or update the indexer that connects the data source, skillset and index. New creation starts indexing automatically; an existing idle indexer receives an explicit run request. | Search reads the files, splits text, generates embeddings and projects chunk documents. Embedding calls incur charges; completion is checked separately. |
+| `monitor` | Poll the run requested by `indexer`, showing its status and processed/failed counts. Reject old successes and failed runs. | Confirms completion and prints warnings; does not request another run or perform a search. |
+| `inspect` | Fetch up to 100 indexed chunks using a wildcard query, including parent IDs, chunk text and structured source metadata. | Shows the total chunk count and what was actually indexed; this is inspection, not a relevance-ranked search. |
+| `verify-vectors` | Fetch up to three stored vectors and check that each has 1,536 dimensions. Print only chunk IDs and dimensions. | A small embedding-presence/shape check, not a whole-index or embedding-quality check; generates no new embeddings. |
+| `keyword [question]` | Search chunk text using the question's words, without a vector query or semantic reranking. | Up to three BM25-ranked results; a baseline for comparing the other search modes. |
+| `vector [question]` | Use the configured vectorizer to embed the question, then search stored chunk vectors for similar content. | Up to three similarity-ranked results, without keyword matching. Query-time embeddings incur charges; stored vectors are not regenerated. |
+| `hybrid [question]` | Run keyword and vector searches together, merging their rankings with reciprocal rank fusion (RRF). | Up to three results combining exact-word and similarity signals; query-time embeddings incur charges. |
+| `semantic [question]` | Run keyword search, then semantically rerank the candidates and request extractive captions. | Up to three semantically reranked results with captions; semantic ranking incurs charges, but no question embedding is requested. |
+| `semantic-hybrid [question]` | Combine keyword and vector retrieval, then semantically rerank the merged candidates and request extractive captions. | Up to three results using all retrieval signals; query-time embeddings and semantic ranking incur charges. |
+| `run [question]` | Execute upload, Search-object setup, indexing, monitoring, inspection, vector verification and all five search modes in the order below. | The complete lab; separate step commands are not prerequisites. Indexing and the applicable query operations incur charges. |
+| `help` | Print the command list without loading settings or authenticating. | An offline reminder of the available steps and question arguments. |
+
+In short: **upload files -> register the source -> define the index and skills -> start indexing -> wait -> inspect -> compare searches**.
+Setup commands define the pipeline; `indexer` starts the work that generates stored document embeddings.
+The five search commands retrieve evidence, not an LLM-generated answer, and can be run independently after indexing completes.
 
 ```powershell
 dotnet run --project c-sharp-console-apps\04-blob-indexer-skills -- help
