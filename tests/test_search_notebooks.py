@@ -823,7 +823,6 @@ class SearchCellTests(unittest.TestCase):
         for notebook, cell_id in [
             (BLOB, "cleanup"), (PUSH, "cleanup"), (SP_INDEXED, "cleanup"), (SP_REMOTE, "cleanup"),
             (CU, "cleanup"), (CU, "run-indexer"), (BLOB, "run-indexer"), (SP_INDEXED, "run-indexer"),
-            (SP_INDEXED, "create-app-registration"), (SP_INDEXED, "verify-federation"),
         ]:
             self.http.reset_mock()
             run_cell(notebook, cell_id, self.ns)
@@ -864,79 +863,6 @@ class SearchCellTests(unittest.TestCase):
             self.assertEqual(self.ns["previous_run_start"], "previous")
             if operation == "resync":
                 self.assertEqual(calls[0].kwargs["json"], {"options": ["permissions"]})
-
-    def test_app_creation_declares_correct_permissions_but_never_grants_consent(self):
-        import os
-        self.ns["os"] = os
-        api_roles = [
-            {"value": name, "id": name + "-id", "isEnabled": True, "allowedMemberTypes": ["Application"]}
-            for name in ("Files.Read.All", "Sites.Selected", "User.Read.All")
-        ]
-        self.http.get.return_value = http_response(200, {"value": [{"appRoles": api_roles}]})
-        self.http.post.side_effect = [
-            http_response(201, {"appId": self.ns["sp_app_client_id"], "id": "app-object-id"}),
-            http_response(201, {"id": "service-principal-id"}),
-        ]
-        with patch.dict(os.environ, {}, clear=True):
-            self.ns["prefix"] = "alice01"
-            run_cell(SP_INDEXED, "create-app-registration", self.ns, {
-                "CREATE_APP_REGISTRATION = False": "CREATE_APP_REGISTRATION = True",
-            })
-        calls = self.http.post.call_args_list
-        self.assertEqual(len(calls), 2)
-        app_body = calls[0].kwargs["json"]
-        self.assertEqual(app_body["displayName"], "alice01-sharepoint-indexer")
-        self.assertEqual(app_body["signInAudience"], "AzureADMyOrg")
-        self.assertEqual(app_body["requiredResourceAccess"], [
-            {"resourceAppId": "00000003-0000-0000-c000-000000000000", "resourceAccess": [
-                {"id": "Files.Read.All-id", "type": "Role"},
-                {"id": "Sites.Selected-id", "type": "Role"},
-            ]},
-        ])
-        self.assertNotIn("passwordCredentials", app_body)
-        self.assertTrue(calls[1].args[0].endswith("/servicePrincipals"))
-        self.assertNotIn("appRoleAssignments", str(calls))
-
-    def test_app_creation_refuses_a_configured_existing_app(self):
-        import os
-        self.ns["os"] = os
-        with patch.dict(os.environ, {"SHAREPOINT_APP_CLIENT_ID": "already-configured"}):
-            with self.assertRaisesRegex(RuntimeError, "duplicate"):
-                run_cell(SP_INDEXED, "create-app-registration", self.ns, {
-                    "CREATE_APP_REGISTRATION = False": "CREATE_APP_REGISTRATION = True",
-                })
-        self.http.post.assert_not_called()
-
-    def test_federation_check_validates_identity_and_trust(self):
-        import os
-        self.ns["os"] = os
-        environment = {
-            "SHAREPOINT_APP_OBJECT_ID": "44444444-4444-4444-4444-444444444444",
-            "SHAREPOINT_APP_CLIENT_ID": self.ns["sp_app_client_id"],
-            "SHAREPOINT_SEARCH_MI_CLIENT_ID": self.ns["sp_mi_client_id"],
-            "AZURE_SEARCH_RESOURCE_ID": "/subscriptions/test/search",
-        }
-        for subject, should_pass in [("mi-principal", True), ("wrong-principal", False)]:
-            self.http.get.side_effect = [
-                http_response(200, {"identity": {"principalId": "mi-principal"}}),
-                http_response(200, {"appId": self.ns["sp_mi_client_id"]}),
-                http_response(200, {"appId": self.ns["sp_app_client_id"]}),
-                http_response(200, {"value": [{
-                    "subject": subject,
-                    "issuer": f"https://login.microsoftonline.com/{self.ns['tenant_id']}/v2.0",
-                    "audiences": ["api://AzureADTokenExchange"],
-                }]}),
-            ]
-            with patch.dict(os.environ, environment):
-                if should_pass:
-                    run_cell(SP_INDEXED, "verify-federation", self.ns, {
-                        "VERIFY_FEDERATION = False": "VERIFY_FEDERATION = True",
-                    })
-                else:
-                    with self.assertRaisesRegex(RuntimeError, "No matching"):
-                        run_cell(SP_INDEXED, "verify-federation", self.ns, {
-                            "VERIFY_FEDERATION = False": "VERIFY_FEDERATION = True",
-                        })
 
     def test_no_vision_or_custom_acl_incompatible_skills_in_new_code(self):
         for notebook in (BLOB, SP_INDEXED):

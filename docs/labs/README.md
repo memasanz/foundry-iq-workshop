@@ -26,12 +26,18 @@ and an [optional legacy C# notebook](../../c-sharp-notebooks/04-blob-indexer-ski
 Lab 05 has a [supported C# console app](../../c-sharp-console-apps/05-blob-content-understanding/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/05-blob-content-understanding.ipynb)
 for the Content Understanding pipeline.
+Lab 06 has a [supported C# console app](../../c-sharp-console-apps/06-push-chunks-vectors/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/06-push-chunks-vectors.ipynb)
+for application-owned chunking, embedding and push ingestion.
+Lab 08 has a [supported C# console app](../../c-sharp-console-apps/08-sharepoint-remote/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/08-sharepoint-remote.ipynb)
+for user-authorized remote SharePoint retrieval without indexing.
 
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|
 | [04 - Blob indexer and skills](../../python-notebooks/04-blob-indexer-skills.ipynb) | 45-60 min | Let Search read Blob files, split text and generate embeddings. Compare keyword, vector, hybrid and semantic-ranked search. |
 | [05 - Blob + Content Understanding](../../python-notebooks/05-blob-content-understanding.ipynb) | 45-60 min | Extract an original two-page PDF as Markdown, chunk and embed it, then retrieve evidence with page ranges. Uses a separate index and billable Content Understanding. |
-| [06 - Chunk, embed and push](../../python-notebooks/06-push-chunks-vectors.ipynb) | 35-45 min | Do chunking and embedding in Python, then upload to a separate index. Can run without notebook 04 or Blob access. |
+| [06 - Chunk, embed and push](../../python-notebooks/06-push-chunks-vectors.ipynb) | 35-45 min | Do chunking and embedding in Python or C#, then upload to a separate index. Can run without notebook 04 or Blob access. |
 | [07 - SharePoint indexed](../../python-notebooks/07-sharepoint-indexed.ipynb) | 60-90 min | Use Content Understanding semantic text chunks, embeddings and Entra ACL projections, following the text-only setup-index sample. Requires app/consent/site setup; no Vision components. |
 | [08 - SharePoint remote](../../python-notebooks/08-sharepoint-remote.ipynb) | 20-30 min | Retrieve from SharePoint without copying content into an index. Requires Microsoft 365 Copilot licensing or enabled Retrieval API billing. |
 | [09 - Foundry IQ knowledge base](../../python-notebooks/09-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine the existing Blob and indexed SharePoint indexes with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |

@@ -127,6 +127,12 @@ class AttendeeAliasTests(unittest.TestCase):
             with self.subTest(notebook=number):
                 self.configure(number, "alice01", working_directory=ROOT / "python-notebooks")
 
+    def test_push_and_remote_setup_require_a_configured_prefix_without_prompting(self):
+        for number in (6, 8):
+            with self.subTest(notebook=number):
+                with self.assertRaisesRegex(RuntimeError, "Missing settings:.*WORKSHOP_PREFIX"):
+                    self.configure(number, "")
+
     def test_foundry_setup_loads_parent_env_files_and_overrides_stale_settings(self):
         files = {
             r"..\.env": "WEBIQ_API_KEY=env-test-key\nWORKSHOP_PREFIX=alice01\n",
@@ -139,7 +145,7 @@ class AttendeeAliasTests(unittest.TestCase):
         def load_settings(path, override=False):
             return load_dotenv(stream=StringIO(files[path]), override=override)
 
-        for number in (2, 3, 4, 5):
+        for number in (2, 3, 4, 5, 6, 8):
             with self.subTest(notebook=number):
                 loader = Mock(side_effect=load_settings)
                 namespace = self.configure(number, "processalias", dotenv_loader=loader)
@@ -157,9 +163,12 @@ class AttendeeAliasTests(unittest.TestCase):
                 elif number == 3:
                     self.assertEqual(namespace["webiq_connection_name"], "bob02-webiq-mcp")
                     expected_client["allow_preview"] = True
+                elif number == 8:
+                    self.assertEqual(namespace["remote_source_name"], "bob02-sp-remote-source")
+                    self.assertEqual(namespace["remote_base_name"], "bob02-sp-remote-kb")
                 else:
-                    self.assertEqual(namespace["index_name"],
-                                     "bob02-blob-chunks" if number == 4 else "bob02-cu-chunks")
+                    suffix = {4: "blob-chunks", 5: "cu-chunks", 6: "push-chunks"}[number]
+                    self.assertEqual(namespace["index_name"], f"bob02-{suffix}")
                 if number in (2, 3):
                     namespace["AIProjectClient"].assert_called_once_with(**expected_client)
 

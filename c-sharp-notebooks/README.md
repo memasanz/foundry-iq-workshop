@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), and [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb).
+Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), and [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb).
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -157,3 +157,44 @@ Fixed-size chunking uses 1,000 characters with 200-character overlap, not physic
 The page ranges identify where each chunk originated; chunks can span pages.
 There are no experiments, extra reprocessing or cleanup cells. Resources are retained.
 Live analysis, embeddings and semantic ranking can incur charges; use synthetic data and clear outputs before sharing.
+
+## 9. Open and run lab 06
+
+Lab 06 is independent of labs 01-05. Configure existing Search and Foundry embedding resources
+in the root settings files, set `WORKSHOP_PREFIX`, and sign in with Azure CLI.
+Your identity needs **Search Service Contributor**, **Search Index Data Contributor** and
+**Cognitive Services OpenAI User** (or **Foundry Owner**) on the parent Foundry resource.
+Search's managed identity needs embedding inference access for query-time vectorization.
+Enable semantic ranker; no Blob access, indexer, Web IQ key or prompt agent is needed.
+See [lab 06 settings and step instructions](../c-sharp-console-apps/06-push-chunks-vectors/README.md).
+
+Open [06-push-chunks-vectors.ipynb](06-push-chunks-vectors.ipynb) with the same C# kernel and working directory.
+Run its inline helpers and numbered sections in order; no console-app imports are needed.
+It follows Python lab 06: read local synthetic TXT files, slice overlapping chunks, generate document
+embeddings as the signed-in user, push complete chunk documents to a separate index, and verify stored content.
+Then compare keyword, vector, hybrid and semantic-ranked retrieval.
+
+Document embeddings are generated in the application; question embeddings still use Search's vectorizer.
+Changing or removing chunks can leave old keys behind, so follow the notebook's explicit deletion guidance.
+Optional cleanup is disabled by default and targets only the prefixed push index.
+Live embeddings and semantic ranking can incur charges; use synthetic data and clear outputs before sharing.
+
+## 10. Open and run lab 08
+
+Lab 08 is independent of the indexed SharePoint lab 07. Configure the existing Search endpoint,
+tenant ID, test SharePoint site URL and `WORKSHOP_PREFIX` in the root settings files, then sign in with Azure CLI.
+Your identity needs **Search Service Contributor**, **Search Index Data Reader** (or Contributor),
+and access to the source documents in Microsoft 365.
+Each querying user also needs a **Microsoft 365 Copilot add-on license** or enabled Retrieval API pay-as-you-go.
+A GitHub Copilot license does not satisfy this requirement.
+See [lab 08 settings, eligibility and step instructions](../c-sharp-console-apps/08-sharepoint-remote/README.md).
+
+Open [08-sharepoint-remote.ipynb](08-sharepoint-remote.ipynb) with the same C# kernel and working directory.
+Run its inline helpers and numbered sections in order; no console-app imports are needed.
+It creates a remote SharePoint knowledge source and an extractive knowledge base, then retrieves passages
+as the signed-in user. There is no custom app registration, indexer, document copy or Foundry model call.
+
+The site filter selects content, but Microsoft 365 document permissions are the authorization boundary.
+Test allowed and denied documents separately. Gateway failures print correlation details before stopping.
+Live Retrieval API calls are subject to licensing, quota and billing; optional cleanup is off by default.
+Clear outputs before sharing.

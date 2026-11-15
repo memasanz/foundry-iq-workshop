@@ -23,7 +23,7 @@ You can take one track or work through the whole workshop. The notebooks show th
 
 ## Choose your code
 
-**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore labs 01-05 in optional [Polyglot Notebooks](c-sharp-notebooks) or [.NET 10 console apps](c-sharp-console-apps). Polyglot Notebooks uses deprecated tooling; the console apps are the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
+**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore labs 01-06 and 08 in optional [Polyglot Notebooks](c-sharp-notebooks) or [.NET 10 console apps](c-sharp-console-apps). Polyglot Notebooks uses deprecated tooling; the console apps are the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
 
 ## Prerequisites
 

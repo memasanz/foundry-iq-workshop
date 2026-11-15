@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01-05. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-06 and 08. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -199,3 +199,90 @@ dotnet run --project .\tests\c-sharp-content-understanding
 
 The notebook check additionally needs the existing Python test environment and optional legacy
 `.NET Interactive` tool. Neither check makes live Azure calls.
+
+### C# console app (lab 06)
+
+Lab 06 moves ingestion into the application: read local TXT files, chunk them, call the embeddings REST API,
+and push text, vectors and provenance to a separate Search index.
+It is independent of labs 01-05 and needs no Blob access, indexer, Web IQ key or Foundry prompt agent.
+Configure existing Search and Foundry embedding resources, set `WORKSHOP_PREFIX`, and sign in with Azure CLI.
+
+Your identity needs **Search Service Contributor**, **Search Index Data Contributor** and
+**Cognitive Services OpenAI User** (or **Foundry Owner**) on the parent Foundry resource.
+Unlike the indexer labs, document embeddings run as you, not Search.
+Search's managed identity still needs embedding inference access for query-time text vectorization.
+Enable semantic ranker. See [lab 06 prerequisites and step overview](../../c-sharp-console-apps/06-push-chunks-vectors/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\06-push-chunks-vectors -- --help
+dotnet run --project .\c-sharp-console-apps\06-push-chunks-vectors -- run
+```
+
+Follow the README's **Run one step at a time** table to create the index, chunk, embed, push, verify
+and compare five search modes independently.
+Ignored local artifacts preserve chunks and embeddings between commands; these contain sample content,
+not just metadata. Follow the README before changing inputs or deployment settings.
+The complete `run` does not delete resources. Cleanup requires an explicit opt-in and targets only the push index.
+Embeddings and semantic ranking can incur charges; use synthetic, non-sensitive TXT files.
+
+### Optional legacy C# notebook (lab 06)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[06-push-chunks-vectors.ipynb](../../c-sharp-notebooks/06-push-chunks-vectors.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings and sample-data paths resolve.
+Run its commented inline helpers and numbered sections in order, without console-app imports.
+It preserves Python lab 06's visible payloads, deterministic chunk keys, embedding response mapping,
+per-document push checks, asynchronous content/vector verification and retrieval comparisons.
+
+Offline checks use synthetic HTTP responses and credentials:
+
+```powershell
+dotnet run --project .\tests\c-sharp-push
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_csharp_push_notebook.py -v
+```
+
+The notebook check additionally needs the existing Python test environment and optional legacy
+`.NET Interactive` tool. Neither check makes live Azure calls.
+
+### C# console app (lab 08)
+
+Lab 08 retrieves SharePoint passages remotely through a Search knowledge source and knowledge base.
+It is independent of lab 07 and needs no custom ingestion app, federation, indexer, document copy,
+Web IQ key or Foundry model. Configure `AZURE_TENANT_ID`, `AZURE_SEARCH_ENDPOINT`,
+`SHAREPOINT_SITE_URL` and `WORKSHOP_PREFIX`, then sign in with Azure CLI.
+
+Your identity needs **Search Service Contributor**, **Search Index Data Reader** (or Contributor),
+and access to the source documents in Microsoft 365.
+Each querying user needs a **Microsoft 365 Copilot add-on license** or enabled Retrieval API pay-as-you-go.
+Pay-as-you-go enablement requires at least one Copilot license in the tenant; its setup is separate from this app.
+A GitHub Copilot license is insufficient. See [lab 08 prerequisites and step overview](../../c-sharp-console-apps/08-sharepoint-remote/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\08-sharepoint-remote -- --help
+dotnet run --project .\c-sharp-console-apps\08-sharepoint-remote -- run
+```
+
+Follow the README's **Run one step at a time** table to create the remote source, create the knowledge base,
+and retrieve independently. Setup commands do not hide a retrieval call.
+The full `run` retains resources; cleanup is explicitly opt-in and affects only the prefixed source/base.
+The site filter is not an access-control boundary; retrieval evaluates the signed-in user's Microsoft 365 permissions.
+Use non-sensitive test documents and inspect returned URLs and gateway diagnostics.
+
+### Optional legacy C# notebook (lab 08)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[08-sharepoint-remote.ipynb](../../c-sharp-notebooks/08-sharepoint-remote.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings paths resolve.
+Run the commented inline helpers and numbered sections in order, without console-app imports.
+It preserves Python lab 08's minimal reasoning, extractive output, user-authorized retrieval,
+upstream-error diagnostics and indexed-versus-remote comparison.
+
+Offline checks use synthetic HTTP responses and credentials:
+
+```powershell
+dotnet run --project .\tests\c-sharp-remote-sharepoint
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_csharp_remote_sharepoint_notebook.py -v
+```
+
+The notebook check additionally needs the existing Python test environment and optional legacy
+`.NET Interactive` tool. Neither check makes live Azure or Microsoft 365 calls.

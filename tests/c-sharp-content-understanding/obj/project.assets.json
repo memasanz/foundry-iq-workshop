@@ -33,11 +33,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\tests\\c-sharp-content-understanding\\ContentUnderstandingTests.csproj",
+      "projectUniqueName": "c:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\tests\\c-sharp-content-understanding\\ContentUnderstandingTests.csproj",
       "projectName": "ContentUnderstandingTests",
-      "projectPath": "C:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\tests\\c-sharp-content-understanding\\ContentUnderstandingTests.csproj",
+      "projectPath": "c:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\tests\\c-sharp-content-understanding\\ContentUnderstandingTests.csproj",
       "packagesPath": "C:\\Users\\memasanz\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\tests\\c-sharp-content-understanding\\obj\\",
+      "outputPath": "c:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\tests\\c-sharp-content-understanding\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -59,8 +59,8 @@
           "framework": "net10.0",
           "targetAlias": "net10.0",
           "projectReferences": {
-            "C:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\c-sharp-console-apps\\05-blob-content-understanding\\ContentUnderstanding.csproj": {
-              "projectPath": "C:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\c-sharp-console-apps\\05-blob-content-understanding\\ContentUnderstanding.csproj"
+            "c:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\c-sharp-console-apps\\05-blob-content-understanding\\ContentUnderstanding.csproj": {
+              "projectPath": "c:\\Users\\memasanz\\repos\\checkMe\\foundry-iq-workshop\\c-sharp-console-apps\\05-blob-content-understanding\\ContentUnderstanding.csproj"
             }
           }
         }
