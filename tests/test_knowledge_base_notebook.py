@@ -7,7 +7,7 @@ import nbformat
 import test_notebooks
 from test_notebooks import ROOT, code_cell, http_response
 
-KB = "09-foundry-iq-knowledge-base.ipynb"
+KB = "11-foundry-iq-knowledge-base.ipynb"
 QUERIES = ("ask-internal", "ask-web", "ask-sharepoint", "ask-mixed")
 
 
@@ -18,7 +18,7 @@ def kb_namespace():
         "search_token": lambda: "search-user-token",
         "search_endpoint": "https://workshop.search.windows.net",
         "api_version": "2026-08-01-preview",
-        "blob_index_name": "alice01-blob-chunks",
+        "blob_index_name": "alice01-cu-chunks",
         "sharepoint_index_name": "alice01-nb7-index",
         "aoai_endpoint": "https://account.openai.azure.com",
         "chat_deployment": "workshop-model",
@@ -48,22 +48,97 @@ class KnowledgeBaseNotebookTests(unittest.TestCase):
         self.http = self.ns["requests"]
         for method in ("put", "post", "get", "delete"):
             getattr(self.http, method).return_value = http_response(200, {})
+        run("reference-formatting", self.ns)
 
     def test_blob_source_references_existing_index_and_metadata(self):
         run("create-blob-source", self.ns)
         body = self.http.put.call_args.kwargs["json"]
         parameters = body["searchIndexParameters"]
         self.assertEqual(body["kind"], "searchIndex")
-        self.assertEqual(parameters["searchIndexName"], "alice01-blob-chunks")
+        self.assertEqual(parameters["searchIndexName"], "alice01-cu-chunks")
         self.assertEqual(parameters["semanticConfigurationName"], "chunk-semantic")
         self.assertEqual(parameters["searchFields"], [{"name": "chunk"}])
         self.assertEqual([f["name"] for f in parameters["sourceDataFields"]],
-                         ["chunk_id", "chunk", "title", "source/file_name", "source/url"])
+                         ["chunk_id", "chunk", "title", "source/file_name", "source/url",
+                          "page_from", "page_to"])
         self.assertNotIn("ingestionParameters", json.dumps(body))
-        self.ns["blob_index_name"] = "alice01-cu-chunks"
+        self.ns["blob_index_name"] = "alice01-custom-cu-chunks"
         run("create-blob-source", self.ns)
         self.assertEqual(self.http.put.call_args.kwargs["json"]["searchIndexParameters"]["searchIndexName"],
-                         "alice01-cu-chunks")
+                         "alice01-custom-cu-chunks")
+
+    def test_pdf_references_show_filename_page_ranges_and_authenticated_source_links(self):
+        for cell_id in QUERIES:
+            for first, last, label in ((1, 1, "p. 1"), (1, 2, "pp. 1-2")):
+                data = {"source": {"file_name": "travel-handbook.pdf",
+                                   "url": "https://storage.example/handbook.pdf#old"},
+                        "page_from": first, "page_to": last}
+                if last == 2:
+                    data = json.dumps(data)
+                payload = {"response": [], "activity": [], "references": [
+                    {"id": "0", "docKey": "opaque-chunk", "sourceData": data},
+                ]}
+                self.http.post.return_value = http_response(200, payload)
+                with self.subTest(cell=cell_id, pages=label), patch("builtins.print") as output:
+                    exec(code_cell(KB, cell_id), self.ns)
+                printed = str(output.call_args_list)
+                self.assertIn("[ref_id:0]", printed)
+                self.assertIn("travel-handbook.pdf", printed)
+                self.assertIn(label, printed)
+                self.assertIn("https://storage.example/handbook.pdf#page=1", printed)
+                self.assertNotIn("opaque-chunk", printed)
+                self.assertNotIn("#old", printed)
+
+    def test_reference_formatter_handles_flattened_fields_and_missing_or_invalid_pages(self):
+        for first, last in ((None, None), (0, 1), (2, 1), (True, 2), ("1", "2")):
+            reference = {"id": "1", "sourceData": {
+                "source/file_name": "handbook.pdf", "source/url": "https://storage.example/handbook.pdf",
+                "page_from": first, "page_to": last,
+            }}
+            with self.subTest(pages=(first, last)), patch("builtins.print") as output:
+                self.ns["print_reference"](reference)
+            printed = str(output.call_args_list)
+            self.assertIn("handbook.pdf", printed)
+            self.assertNotIn("#page=", printed)
+            self.assertNotIn("pp.", printed)
+        for data in (None, "not JSON", [], "[]"):
+            with self.subTest(data=data), patch("builtins.print") as output:
+                self.ns["print_reference"]({"id": "2", "docKey": "fallback-key", "sourceData": data})
+            self.assertIn("fallback-key", str(output.call_args_list))
+
+    def test_web_references_request_source_data_and_print_returned_titles_and_urls(self):
+        for cell_id in QUERIES:
+            for encoded in (False, True):
+                evidence = {"title": "Public weather forecast",
+                            "url": "https://weather.example/forecast#today",
+                            "content": "Time-stamped forecast passage"}
+                data = {"content": json.dumps(evidence)} if encoded else evidence
+                self.http.post.return_value = http_response(200, {
+                    "response": [], "activity": [], "references": [
+                        {"id": "0", "type": "mcpServer", "sourceData": data},
+                    ],
+                })
+                with self.subTest(cell=cell_id, encoded=encoded), patch("builtins.print") as output:
+                    exec(code_cell(KB, cell_id), self.ns)
+                web_params = next(
+                    source for source in self.http.post.call_args.kwargs["json"]["knowledgeSourceParams"]
+                    if source["kind"] == "mcpServer"
+                )
+                self.assertTrue(web_params["includeReferenceSourceData"])
+                self.assertTrue(web_params["includeReferences"])
+                printed = str(output.call_args_list)
+                self.assertIn("[ref_id:0]", printed)
+                self.assertIn("Public weather forecast", printed)
+                self.assertIn("https://weather.example/forecast#today", printed)
+                self.assertNotIn("#page=", printed)
+
+    def test_web_reference_without_returned_url_reports_it_without_fabrication(self):
+        for content in ("Not JSON", "[]", json.dumps({"title": "Forecast without URL"})):
+            with self.subTest(content=content), patch("builtins.print") as output:
+                self.ns["print_reference"]({"id": "0", "sourceData": {"content": content}})
+            printed = str(output.call_args_list)
+            self.assertIn("No source URL returned.", printed)
+            self.assertNotIn("https://", printed)
 
     def test_sharepoint_source_references_existing_acl_index(self):
         run("create-sharepoint-source", self.ns)
@@ -80,13 +155,13 @@ class KnowledgeBaseNotebookTests(unittest.TestCase):
 
     def test_configuration_needs_no_storage_ingestion_app_or_embedding_settings(self):
         namespace = test_notebooks.AttendeeAliasTests().configure(
-            9, "alice01", AZURE_STORAGE_RESOURCE_ID="", AZURE_STORAGE_BLOB_ENDPOINT="",
+            11, "alice01", AZURE_STORAGE_RESOURCE_ID="", AZURE_STORAGE_BLOB_ENDPOINT="",
             AZURE_STORAGE_CONTAINER_NAME="", SHAREPOINT_SITE_URL="",
             AZURE_AI_EMBEDDING_DEPLOYMENT_NAME="", SHAREPOINT_APP_CLIENT_ID="",
             SHAREPOINT_SEARCH_MI_CLIENT_ID="",
             WEBIQ_KB_TOOLS="auto",
         )
-        self.assertEqual(namespace["blob_index_name"], "alice01-blob-chunks")
+        self.assertEqual(namespace["blob_index_name"], "alice01-cu-chunks")
         self.assertEqual(namespace["sharepoint_index_name"], "alice01-nb7-index")
         self.assertEqual(namespace["webiq_tools"], ["web"])
 
@@ -150,16 +225,17 @@ class KnowledgeBaseNotebookTests(unittest.TestCase):
         def schema(notebook):
             namespace = {
                 **self.ns, "index_name": "existing", "embedding_dimensions": 1536,
-                "semantic_configuration": "chunk-semantic" if notebook.startswith("04") else "semantic-config",
+                "semantic_configuration": "chunk-semantic" if notebook.startswith("05") else "semantic-config",
                 "embedding_endpoint": self.ns["aoai_endpoint"],
                 "embedding_deployment": "workshop-embedding",
                 "embedding_model": "text-embedding-3-small",
                 "search_request": Mock(),
+                "check_response": Mock(),
             }
             with patch("builtins.print"):
                 exec(code_cell(notebook, "create-index"), namespace)
             return namespace["index"]
-        schemas = [schema("04-blob-indexer-skills.ipynb"), schema("07-sharepoint-indexed.ipynb")]
+        schemas = [schema("05-blob-content-understanding.ipynb"), schema("07-sharepoint-indexed.ipynb")]
         self.http.reset_mock()
         self.http.get.side_effect = [http_response(200, body) for body in schemas]
         self.http.post.return_value = http_response(200, {"@odata.count": 3})
@@ -180,17 +256,21 @@ class KnowledgeBaseNotebookTests(unittest.TestCase):
 
     def test_missing_index_reports_upstream_notebook_without_creating_one(self):
         self.http.get.return_value = http_response(404, {})
-        with self.assertRaisesRegex(RuntimeError, "Complete notebook 04 or 05"):
+        with self.assertRaisesRegex(RuntimeError, "Complete notebook 05"):
             run("verify-indexes", self.ns)
         self.http.put.assert_not_called()
         self.http.post.assert_not_called()
 
     def test_invalid_schema_or_missing_sharepoint_acls_is_rejected(self):
-        for failure in ("content", "semantic", "acl"):
+        for failure in ("content", "pages", "semantic", "acl"):
             with self.subTest(failure=failure):
                 schemas = self.index_schemas()
                 if failure == "content":
                     schemas[0]["fields"] = []
+                elif failure == "pages":
+                    schemas[0]["fields"] = [
+                        field for field in schemas[0]["fields"] if field["name"] != "page_from"
+                    ]
                 elif failure == "semantic":
                     schemas[0]["semantic"]["configurations"] = []
                 else:

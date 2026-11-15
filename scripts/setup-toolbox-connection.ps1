@@ -9,7 +9,7 @@ Creates one project connection (default 'iq-workshop-search-mcp') of kind remote
 agent's own Entra identity. No secret is stored anywhere.
 
 Each toolbox tool carries its own server_url (the attendee's knowledge base), so ONE shared connection
-serves every attendee. Notebook 12 now creates its own prefixed connection directly in Python;
+serves every attendee. Notebook 14 now creates its own prefixed connection directly in Python;
 this script is only needed for a separate shared-connection setup. The caller needs project
 connection-write permission.
 
@@ -49,5 +49,5 @@ if ($PSCmdlet.ShouldProcess($projectEndpoint, "Create connection '$ConnectionNam
     Invoke-Azd ai connection create $ConnectionName --kind remote-tool --force `
         --target $target --auth-type agentic-identity `
         --audience https://search.azure.com --metadata 'ApiType=Azure'
-    Write-Host "Shared connection '$ConnectionName' is ready. Notebook 12 creates its own prefixed connection independently."
+    Write-Host "Shared connection '$ConnectionName' is ready. Notebook 14 creates its own prefixed connection independently."
 }

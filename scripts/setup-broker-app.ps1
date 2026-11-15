@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Facilitator pre-workshop setup for notebook 10: the Entra app registration that APIM uses to call Azure AI Search for each user.
+Facilitator pre-workshop setup for notebook 12: the Entra app registration that APIM uses to call Azure AI Search for each user.
 
 .DESCRIPTION
 Creates (or reuses) a middle-tier "broker" app:
@@ -170,6 +170,6 @@ if ($PSCmdlet.ShouldProcess($apimName, 'Store broker-client-id and tenant-id nam
     } 'https://management.azure.com' | Out-Null
 }
 
-Write-Host "`nAdd this to .env for notebook 10:"
+Write-Host "`nAdd this to .env for notebook 12:"
 Write-Host "BROKER_APP_CLIENT_ID=$($app.appId)"
 Write-Host 'Next: run scripts\setup-apim-policy.ps1'

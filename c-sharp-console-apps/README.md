@@ -24,8 +24,10 @@ Each lab has its own project folder and README with configuration, run commands 
 | 05 - Blob + Content Understanding | Extract a PDF as Markdown, chunk and embed it, then retrieve evidence with page ranges | [Set up and run lab 05](05-blob-content-understanding/README.md) |
 | 06 - Chunk, embed and push | Chunk local TXT files, generate document embeddings in the app, push to Search and compare five search modes | [Set up and run lab 06](06-push-chunks-vectors/README.md) |
 | 08 - SharePoint remote | Retrieve SharePoint passages as the signed-in user without an indexer or content copy | [Set up and run lab 08](08-sharepoint-remote/README.md) |
+| 09 - Foundry IQ with Web IQ only | Create a Web IQ-only knowledge base and compare synthesized answers with extractive web evidence | [Set up and run lab 09](09-foundry-iq-webiq-only/README.md) |
+| 10 - Foundry IQ with Web IQ + Blob | Combine Web IQ with the existing Content Understanding Blob index; compare document, web and mixed evidence | [Set up and run lab 10](10-foundry-iq-webiq-blob/README.md) |
 
-Labs 01-06 and 08 currently have C# console apps. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
+Labs 01-06 and 08-10 currently have C# console apps. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
 
 ## How the projects run
 
@@ -33,7 +35,7 @@ Use `dotnet run --project` to select a lab's project folder from the repository 
 Arguments after `--` are passed to the application. Each lab README provides complete commands you can copy.
 `dotnet run` builds the project automatically.
 
-Labs 02-06 and 08 also provide **separate commands for each lab step**.
+Labs 02-06 and 08-10 also provide **separate commands for each lab step**.
 Use `--help` to see their command lists, then follow the selected lab README in order.
 Each step runs separately so you can inspect discovery, connections, toolbox or agent creation, ingestion and queries.
 The `run` command still performs the complete workflow; you do not have to execute the separate steps first.

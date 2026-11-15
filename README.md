@@ -8,7 +8,7 @@ You can take one track or work through the whole workshop. The notebooks show th
 
 ![Workshop architecture showing attendees, Foundry, Web IQ, Search, Blob Storage, SharePoint and APIM](docs/workshop-architecture.png)
 
-*Illustrative diagram from an earlier eight-lab layout. Use the [lab guide](docs/labs/README.md) for current 01-14 numbering and the [deployment guide](infra/README.md) for the current region and existing-APIM setup.*
+*Illustrative diagram from an earlier eight-lab layout. Use the [lab guide](docs/labs/README.md) for current 01-15 numbering and the [deployment guide](infra/README.md) for the current region and existing-APIM setup.*
 
 ## Let's get started
 
@@ -23,7 +23,7 @@ You can take one track or work through the whole workshop. The notebooks show th
 
 ## Choose your code
 
-**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore labs 01-06 and 08 in optional [Polyglot Notebooks](c-sharp-notebooks) or [.NET 10 console apps](c-sharp-console-apps). Polyglot Notebooks uses deprecated tooling; the console apps are the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
+**Choose Python or C#:** Python developers can use the [Jupyter notebooks](python-notebooks) for all labs. C# developers can explore labs 01-06 and 08-10 in optional [Polyglot Notebooks](c-sharp-notebooks) or [.NET 10 console apps](c-sharp-console-apps). Polyglot Notebooks uses deprecated tooling; the console apps are the supported C# option. See the [language setup guide](docs/participants/README.md#choose-your-language).
 
 ## Prerequisites
 

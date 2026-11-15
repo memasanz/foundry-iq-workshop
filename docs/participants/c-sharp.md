@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01-06 and 08. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-06 and 08-10. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -286,3 +286,82 @@ dotnet run --project .\tests\c-sharp-remote-sharepoint
 
 The notebook check additionally needs the existing Python test environment and optional legacy
 `.NET Interactive` tool. Neither check makes live Azure or Microsoft 365 calls.
+
+### C# console app (lab 09)
+
+Lab 09 creates a standalone Web IQ-only knowledge base using existing Search and Foundry model resources.
+Configure the root `.env` and `.env.azure`, including `WORKSHOP_PREFIX` and a Web IQ profile API key,
+and sign in with Azure CLI. No Blob or SharePoint index, APIM gateway or prompt agent is needed.
+See [lab 09 prerequisites and step overview](../../c-sharp-console-apps/09-foundry-iq-webiq-only/README.md)
+for the required settings and permissions.
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\09-foundry-iq-webiq-only -- --help
+dotnet run --project .\c-sharp-console-apps\09-foundry-iq-webiq-only -- run
+```
+
+Follow the README's **Run one step at a time** table to create the source, create the knowledge base,
+and retrieve independently. Compare synthesized answers with extractive evidence and inspect MCP activity
+and cited passages. Only the `web` tool is enabled, not a separate `news` tool.
+The full `run` retains resources; cleanup requires explicit confirmation.
+The unauthenticated connectivity probe is optional troubleshooting: HTTP 401 is expected, not a failed login.
+Live retrieval and synthesis can incur charges; keep the stored Web IQ key out of logs and source control.
+
+### Optional legacy C# notebook (lab 09)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[09-foundry-iq-webiq-only.ipynb](../../c-sharp-notebooks/09-foundry-iq-webiq-only.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings paths resolve.
+Run its inline helpers and numbered sections in order, without console-app imports.
+It preserves Python lab 09's Web IQ source, knowledge base, output modes and diagnostic explanations,
+including the portal screenshot and the retained legacy `nb14` resource names.
+Clear outputs before sharing.
+
+Offline checks use synthetic HTTP responses and credentials:
+
+```powershell
+dotnet run --project .\tests\c-sharp-webiq-only
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_csharp_webiq_only_notebook.py -v
+```
+
+The notebook check additionally needs the existing Python test environment and optional legacy
+`.NET Interactive` tool. Neither check makes live Azure or Web IQ calls.
+
+### C# console app (lab 10)
+
+Lab 10 combines Web IQ with the existing Content Understanding Blob index from lab 05.
+Complete lab 05 in either language with the same prefix; this lab selects `<prefix>-cu-chunks`.
+Configure existing Search and Foundry resources, a Web IQ profile key and `WORKSHOP_PREFIX`
+in the root settings files, then sign in with Azure CLI.
+See [lab 10 prerequisites and step overview](../../c-sharp-console-apps/10-foundry-iq-webiq-blob/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\10-foundry-iq-webiq-blob -- --help
+dotnet run --project .\c-sharp-console-apps\10-foundry-iq-webiq-blob -- run
+```
+
+Follow the README's **Run one step at a time** table to verify the populated CU index,
+create the two source definitions and knowledge base, then retrieve Blob-only, web-only or mixed evidence.
+Compare synthesized and extractive output and inspect activity and reference URLs.
+No SharePoint setup, APIM, index creation or reingestion is needed.
+Live retrieval and model calls can incur charges; cleanup requires explicit confirmation and preserves the CU index.
+
+### Optional legacy C# notebook (lab 10)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[10-foundry-iq-webiq-blob.ipynb](../../c-sharp-notebooks/10-foundry-iq-webiq-blob.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings paths resolve.
+Run its inline helpers and numbered sections in order, without console-app imports.
+It follows Python lab 10's CU index verification, two knowledge sources, output modes and three retrieval examples,
+including the portal screenshot. Keep the profile key out of outputs and clear outputs before sharing.
+
+Offline checks use synthetic HTTP responses and credentials:
+
+```powershell
+dotnet run --project .\tests\c-sharp-webiq-blob
+$env:PYTHONPATH = '.\tests'
+.\.venv\Scripts\python.exe -m unittest test_csharp_webiq_blob_notebook.WebIqBlobConsoleTests test_csharp_webiq_blob_notebook.WebIqBlobNotebookTests -v
+```
+
+The notebook check additionally needs the existing Python test environment and optional legacy
+`.NET Interactive` tool. Neither check makes live Azure or Web IQ calls.

@@ -21,8 +21,8 @@ resulting configuration for the notebooks.
 | Storage account and Blob container | Sample source documents | East US, Standard LRS, Hot, `workshop-documents` |
 | Managed identities and role assignments | Let services access each other without account keys | Scoped permissions defined in Bicep |
 
-**APIM is not deployed.** Notebook 10 uses an existing APIM service configured
-in `.env`; see [Existing APIM](#existing-apim-for-notebook-10).
+**APIM is not deployed.** Notebook 12 uses an existing APIM service configured
+in `.env`; see [Existing APIM](#existing-apim-for-notebook-12).
 The templates also do not create SharePoint sites, Entra app registrations,
 Microsoft 365 licenses, Web IQ profile keys, notebook indexes or agents.
 
@@ -221,7 +221,7 @@ A successful deployment does not finish these manual steps:
 Use the [participant guide](../docs/participants/README.md) to install the
 notebook environment and continue with the labs.
 
-## Existing APIM for notebook 10
+## Existing APIM for notebook 12
 
 Add your gateway's full resource ID to `.env`:
 
@@ -232,10 +232,10 @@ APIM_RESOURCE_ID=/subscriptions/<subscription-id>/resourceGroups/<gateway-group>
 The gateway can remain in another region or resource group, and even another
 subscription in the same tenant. Enable its system-assigned managed identity
 and grant that identity **Search Index Data Reader** on the workshop Search
-service. Then follow the [facilitator APIM setup](../docs/facilitators/README.md#4-set-up-the-apim-gateway-facilitator-before-the-workshop-notebook-10).
+service. Then follow the [facilitator APIM setup](../docs/facilitators/README.md#4-set-up-the-apim-gateway-facilitator-before-the-workshop-notebook-12).
 The scripts configure the workshop API and named values on the existing
 gateway; they do not provision an APIM service. Add the printed gateway URL
-and broker client ID to `.env` for notebook 10.
+and broker client ID to `.env` for notebook 12.
 
 ## Redeployment, errors and costs
 

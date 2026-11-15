@@ -28,9 +28,11 @@ The full resource and permission matrix is in [Prepare for the workshop](../../P
 | 05, 07 | A Content Understanding-supported Foundry region (East US recommended), **Cognitive Services User for Search's identity on Foundry**, and budget for document analysis and embeddings. Bicep already declares this role. |
 | 07 | SharePoint indexer preview registration, one shared Entra ingestion app, **tenant admin consent**, and an explicit test-site grant. Graph `Files.Read.All` is tenant-wide file-read access; obtain approval before class. |
 | 08 | **Microsoft 365 Copilot add-on license for each querying user**, or explicitly enabled Retrieval API pay-as-you-go. Pay-as-you-go requires at least one Copilot license in the tenant. GitHub Copilot is not a substitute. |
-| 10 | An **existing APIM service**, its managed-identity Search access, and the separate broker app/policy setup below. Bicep does not create APIM. |
-| 14 | Existing Search and chat deployment, Search authoring/query access, Search identity's model access, and `WEBIQ_API_KEY`. The separate Web IQ source stores its key for direct notebook and portal queries. No document ingestion or APIM setup is required. |
-| 03, 11-12 | Verify toolbox/hosted-agent preview availability in your project and region. Successful infrastructure deployment does not prove these notebook flows work end to end. |
+| 09 | Existing Search and chat deployment, Search authoring/query access, Search identity's model access, and `WEBIQ_API_KEY`. The separate Web IQ source stores its key for direct notebook and portal queries. No document ingestion or APIM setup is required. |
+| 10 | The same Search/chat/Web IQ access plus the populated Content Understanding Blob index from 05 (`<prefix>-cu-chunks`). No SharePoint setup, new ingestion or APIM is required. |
+| 11 | Existing Blob and indexed SharePoint content from 04/05 and 07, including query-user document access, plus the Search/chat/Web IQ access above. |
+| 12 | An **existing APIM service**, its managed-identity Search access, and the separate broker app/policy setup below. Bicep does not create APIM. |
+| 03, 13-14 | Verify toolbox/hosted-agent preview availability in your project and region. Successful infrastructure deployment does not prove these notebook flows work end to end. |
 
 Use only a dedicated SharePoint test site and non-sensitive documents. Never weaken tenant security policies to make an exercise work.
 
@@ -41,8 +43,8 @@ Use only a dedicated SharePoint test site and non-sensitive documents. Never wea
 1. [Deploy](#1-deploy).
 2. [Set up the SharePoint app registration and administrator approval](sharepoint.md#2-set-up-the-sharepoint-app-registration-facilitator-before-the-workshop).
 3. [Complete Web IQ onboarding](#3-complete-web-iq-onboarding).
-4. [Set up the APIM gateway](#4-set-up-the-apim-gateway-facilitator-before-the-workshop-notebook-10).
-5. [Set up the toolbox connection](#5-toolbox-connection-and-agent-access-notebook-12).
+4. [Set up the APIM gateway](#4-set-up-the-apim-gateway-facilitator-before-the-workshop-notebook-12).
+5. [Set up the toolbox connection](#5-toolbox-connection-and-agent-access-notebook-14).
 6. [Grant attendee access](#6-grant-attendee-access).
 7. [Open the notebooks](../participants/README.md).
 
@@ -104,9 +106,9 @@ Follow the [SharePoint setup and administrator handoff](sharepoint.md) for index
 Web IQ API keys are not Azure Cognitive Services keys and are not retrieved with `az cognitiveservices account keys list`. Production Web IQ Entra authentication uses an **app-only** token and a client ID bound to the Web IQ profile; `az login` alone does not authenticate a Web IQ REST call. The notebooks use a Web IQ API key and Entra credentials for Foundry.
 
 
-## 4. Set up the APIM gateway (facilitator, before the workshop; notebook 10)
+## 4. Set up the APIM gateway (facilitator, before the workshop; notebook 12)
 
-Notebook 10 calls the knowledge base through an **existing Azure API Management service**, using a **different app registration** from the SharePoint one. Bicep does not create or configure the gateway. It can be in another resource group or subscription in the same tenant and does not have to move to East US. Keep it outside the dedicated workshop resource group if you intend to run the whole-group cleanup and retain the gateway. Before running the scripts, enable its **system-assigned managed identity** and grant that identity **Search Index Data Reader** on the workshop Search service. The facilitator needs permission to configure APIM, create the broker app, grant this Search role, and **Search Service Contributor** on Search to create the shared Web IQ source.
+Notebook 12 calls the knowledge base through an **existing Azure API Management service**, using a **different app registration** from the SharePoint one. Bicep does not create or configure the gateway. It can be in another resource group or subscription in the same tenant and does not have to move to East US. Keep it outside the dedicated workshop resource group if you intend to run the whole-group cleanup and retain the gateway. Before running the scripts, enable its **system-assigned managed identity** and grant that identity **Search Index Data Reader** on the workshop Search service. The facilitator needs permission to configure APIM, create the broker app, grant this Search role, and **Search Service Contributor** on Search to create the shared Web IQ source.
 
 Set your existing gateway's resource ID in the untracked `.env` file. Both setup scripts read it; the gateway is not a Bicep deployment parameter:
 
@@ -148,18 +150,18 @@ The setup scripts target only this gateway's workshop API and named values, not 
 
 </details>
 
-APIM charges depend on the existing gateway's tier. Because header names embed the source name, the policy is written for **one shared Web IQ source** (`-WebIqSourceName`, default `iq-workshop-webiq`). `setup-apim-policy.ps1` creates or updates it once during facilitator setup; notebook 10 only reads it, so attendees do not overwrite shared configuration. Existing workshops should rerun that script before notebook 10 if the source is missing. Give attendees `BROKER_APP_CLIENT_ID`, `APIM_GATEWAY_URL` and `WEBIQ_APIM_SOURCE_NAME` (printed by the scripts). The APIM named-value secrets are visible to anyone with APIM contributor access; use Key Vault references for production.
+APIM charges depend on the existing gateway's tier. Because header names embed the source name, the policy is written for **one shared Web IQ source** (`-WebIqSourceName`, default `iq-workshop-webiq`). `setup-apim-policy.ps1` creates or updates it once during facilitator setup; notebook 12 only reads it, so attendees do not overwrite shared configuration. Existing workshops should rerun that script before notebook 12 if the source is missing. Give attendees `BROKER_APP_CLIENT_ID`, `APIM_GATEWAY_URL` and `WEBIQ_APIM_SOURCE_NAME` (printed by the scripts). The APIM named-value secrets are visible to anyone with APIM contributor access; use Key Vault references for production.
 
 
-## 5. Toolbox connection and agent access (notebook 12)
+## 5. Toolbox connection and agent access (notebook 14)
 
-Notebook 12 creates or updates each user's `{prefix}-iq-search-mcp` project connection directly in Python before creating the toolbox. No pre-created connection, `TOOLBOX_CONNECTION_NAME` setting or separate connection setup script is required. The signed-in user needs project connection-write permission (`Microsoft.CognitiveServices/accounts/projects/connections/write`), included in the workshop's Foundry Owner grant.
+Notebook 14 creates or updates each user's `{prefix}-iq-search-mcp` project connection directly in Python before creating the toolbox. No pre-created connection, `TOOLBOX_CONNECTION_NAME` setting or separate connection setup script is required. The signed-in user needs project connection-write permission (`Microsoft.CognitiveServices/accounts/projects/connections/write`), included in the workshop's Foundry Owner grant.
 
 The connection targets that user's knowledge-base MCP endpoint with `AgenticIdentityToken` authentication and audience `https://search.azure.com`. Foundry calls Search as the agent, not the user or project identity; no secret is stored. Opt-in cleanup removes the user's connection along with the agent, toolbox and knowledge base.
 
-The existing `setup-toolbox-connection.ps1` remains available for optional shared-connection setups, but notebook 12 no longer uses its shared connection.
+The existing `setup-toolbox-connection.ps1` remains available for optional shared-connection setups, but notebook 14 no longer uses its shared connection.
 
-**Per-agent access.** The agent calls Search as its own Entra identity, created when the agent is deployed, so it cannot be granted in advance. Notebook 12 prints the identity's principal ID and tries to assign **Search Index Data Reader** (read-only, Search service scope) itself. Attendees normally cannot assign roles, so expect to run, with the printed IDs:
+**Per-agent access.** The agent calls Search as its own Entra identity, created when the agent is deployed, so it cannot be granted in advance. Notebook 14 prints the identity's principal ID and tries to assign **Search Index Data Reader** (read-only, Search service scope) itself. Attendees normally cannot assign roles, so expect to run, with the printed IDs:
 
 ```powershell
 .\scripts\grant-agent-search-access.ps1 -PrincipalId <id1>,<id2>

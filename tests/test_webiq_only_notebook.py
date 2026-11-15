@@ -9,12 +9,12 @@ import requests
 from test_notebooks import ROOT, AttendeeAliasTests, code_cell, http_response
 
 
-NOTEBOOK = "14-foundry-iq-webiq-only.ipynb"
+NOTEBOOK = "09-foundry-iq-webiq-only.ipynb"
 
 
 class WebIqOnlyNotebookTests(unittest.TestCase):
     def setUp(self):
-        self.ns = AttendeeAliasTests().configure(14, "alice01")
+        self.ns = AttendeeAliasTests().configure(9, "alice01")
         self.ns.update(requests=Mock(), search_token=lambda: "search-user-token")
         self.http = self.ns["requests"]
         self.http.put.return_value = http_response(200, {})
@@ -25,18 +25,16 @@ class WebIqOnlyNotebookTests(unittest.TestCase):
             exec(code_cell(NOTEBOOK, cell_id), self.ns)
         return output
 
-    def test_notebook_is_valid_with_compilable_code_and_clean_outputs(self):
+    def test_notebook_is_valid_with_compilable_code_and_saved_outputs(self):
         notebook = nbformat.read(ROOT / "python-notebooks" / NOTEBOOK, as_version=4)
         nbformat.validate(notebook)
         for cell in notebook.cells:
             if cell.cell_type == "code":
-                self.assertIsNone(cell.execution_count)
-                self.assertEqual(cell.outputs, [])
                 compile(cell.source, cell.id, "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
 
     def test_configuration_is_independent_of_apim_indexes_and_ingestion(self):
         ns = AttendeeAliasTests().configure(
-            14, "alice01", APIM_GATEWAY_URL="", BROKER_APP_CLIENT_ID="",
+            9, "alice01", APIM_GATEWAY_URL="", BROKER_APP_CLIENT_ID="",
             AZURE_STORAGE_RESOURCE_ID="", SHAREPOINT_SITE_URL="",
             AZURE_AI_EMBEDDING_DEPLOYMENT_NAME="", WEBIQ_KB_TOOLS="auto",
         )
@@ -71,6 +69,11 @@ class WebIqOnlyNotebookTests(unittest.TestCase):
         self.assertIn("HTTPS completed", str(output.call_args_list))
         self.assertNotIn("proxy-secret", str(output.call_args_list))
         self.assertNotIn("synthetic-test-key", str(self.http.get.call_args))
+        notebook = nbformat.read(ROOT / "python-notebooks" / NOTEBOOK, as_version=4)
+        guide = next(cell.source for cell in notebook.cells if cell.id == "network-guide")
+        self.assertIn("HTTP 401 is expected", guide.splitlines()[0])
+        self.assertIn("intentionally unauthenticated", guide)
+        self.assertIn("knowledge-base", guide)
 
     def test_network_check_reports_connection_failure_without_claiming_success(self):
         self.http.get.side_effect = requests.ConnectionError("reset")

@@ -6,9 +6,9 @@ from unittest.mock import Mock
 
 from azure.ai.projects.models import AgentVersionStatus
 
-from test_notebooks import code_cell, http_response
+from test_notebooks import ROOT, code_cell, http_response
 
-TOOLBOX = "12-foundry-iq-toolbox-agent.ipynb"
+TOOLBOX = "14-foundry-iq-toolbox-agent.ipynb"
 SEARCH = "https://workshop.search.windows.net"
 SEARCH_ID = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.Search/searchServices/workshop"
 PROJECT_ID = "/subscriptions/s/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/workshop/projects/workshop"
@@ -17,7 +17,7 @@ PRINCIPAL = "55555555-5555-5555-5555-555555555555"
 
 class ToolboxAgentNotebookTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory(dir=ROOT, prefix=".test-toolbox-")
         self.folder = Path(self.tmp.name) / "hosted-agent-iq"
         self.ns = {
             "Path": Path, "zipfile": zipfile, "agent_folder": self.folder,
@@ -54,7 +54,7 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
 
     def test_missing_prerequisite_notebook_is_reported(self):
         self.ns["requests"].get.return_value = http_response(404, {})
-        with self.assertRaisesRegex(RuntimeError, "notebook 09"):
+        with self.assertRaisesRegex(RuntimeError, "notebook 11"):
             exec(code_cell(TOOLBOX, "create-knowledge-base"), self.ns)
 
     def test_toolbox_creates_agent_identity_connection_and_promotes_version(self):

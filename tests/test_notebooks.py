@@ -52,12 +52,12 @@ class NotebookStructureTests(unittest.TestCase):
             with self.subTest(notebook=path.name):
                 introduction = nbformat.read(path, as_version=4).cells[0]
                 self.assertEqual(introduction.cell_type, "markdown")
-                self.assertIn("## Required permissions", introduction.source)
+                self.assertRegex(introduction.source, r"## (Required permissions|Prerequisites and permissions)")
                 if path.name != "01-web-iq-apis.ipynb":
                     self.assertIn("WORKSHOP_PREFIX", introduction.source)
                     self.assertIn("not enforce access isolation", introduction.source)
 
-    def test_notebook_schema_syntax_and_clean_outputs(self):
+    def test_notebook_schema_and_syntax_preserve_saved_execution_state(self):
         paths = list((ROOT / "python-notebooks").glob("*.ipynb"))
         required = {
             "01-web-iq-apis.ipynb", "02-foundry-web-iq-agent.ipynb",
@@ -65,10 +65,11 @@ class NotebookStructureTests(unittest.TestCase):
             "04-blob-indexer-skills.ipynb", "05-blob-content-understanding.ipynb",
             "06-push-chunks-vectors.ipynb",
             "07-sharepoint-indexed.ipynb", "08-sharepoint-remote.ipynb",
-            "09-foundry-iq-knowledge-base.ipynb", "10-foundry-iq-apim.ipynb",
-            "11-hosted-agent.ipynb", "12-foundry-iq-toolbox-agent.ipynb",
-            "13-web-iq-authentication.ipynb",
-            "14-foundry-iq-webiq-only.ipynb",
+            "11-foundry-iq-knowledge-base.ipynb", "12-foundry-iq-apim.ipynb",
+            "13-hosted-agent.ipynb", "14-foundry-iq-toolbox-agent.ipynb",
+            "15-web-iq-authentication.ipynb",
+            "09-foundry-iq-webiq-only.ipynb",
+            "10-foundry-iq-webiq-blob.ipynb",
         }
         self.assertEqual(required, {path.name for path in paths})
         for path in sorted(ROOT / "python-notebooks" / name for name in required):
@@ -77,8 +78,6 @@ class NotebookStructureTests(unittest.TestCase):
                 nbformat.validate(notebook)
                 for cell in notebook.cells:
                     if cell.cell_type == "code":
-                        self.assertIsNone(cell.execution_count)
-                        self.assertEqual(cell.outputs, [])
                         compile(
                             cell.source, f"{path.name}:{cell.id}", "exec",
                             flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT,
@@ -107,7 +106,7 @@ class AttendeeAliasTests(unittest.TestCase):
             **overrides,
         }
         notebook = next((ROOT / "python-notebooks").glob(f"{number:02}-*.ipynb")).name
-        cell_id = "setup" if number in (2, 3, 5, 13) else "configuration"
+        cell_id = "setup" if number in (2, 3, 5, 15) else "configuration"
         namespace = {}
         with (
             patch.dict(os.environ, settings, clear=True),
@@ -123,12 +122,20 @@ class AttendeeAliasTests(unittest.TestCase):
         return namespace
 
     def test_configuration_supports_the_renamed_python_notebooks_directory(self):
-        for number in range(2, 15):
+        for number in range(2, 16):
             with self.subTest(notebook=number):
                 self.configure(number, "alice01", working_directory=ROOT / "python-notebooks")
 
+    def test_shifted_setup_does_not_inspect_infrastructure_files(self):
+        for number in range(9, 16):
+            with self.subTest(notebook=number), patch(
+                "pathlib.Path.is_file",
+                side_effect=AssertionError("Configuration must not inspect deployment files"),
+            ):
+                self.configure(number, "alice01", working_directory=ROOT / "unrelated-kernel-folder")
+
     def test_push_and_remote_setup_require_a_configured_prefix_without_prompting(self):
-        for number in (6, 8):
+        for number in (6, 8, 9, 10, 11, 12, 13, 14, 15):
             with self.subTest(notebook=number):
                 with self.assertRaisesRegex(RuntimeError, "Missing settings:.*WORKSHOP_PREFIX"):
                     self.configure(number, "")
@@ -145,7 +152,7 @@ class AttendeeAliasTests(unittest.TestCase):
         def load_settings(path, override=False):
             return load_dotenv(stream=StringIO(files[path]), override=override)
 
-        for number in (2, 3, 4, 5, 6, 8):
+        for number in (2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15):
             with self.subTest(notebook=number):
                 loader = Mock(side_effect=load_settings)
                 namespace = self.configure(number, "processalias", dotenv_loader=loader)
@@ -155,7 +162,7 @@ class AttendeeAliasTests(unittest.TestCase):
                 self.assertEqual(namespace["prefix"], "bob02")
                 expected_client = {
                     "endpoint": "https://fresh.services.ai.azure.com/api/projects/workshop",
-                    "credential": namespace["credential"],
+                    "credential": namespace.get("credential"),
                 }
                 if number == 2:
                     self.assertEqual(namespace["api_key"], "env-test-key")
@@ -166,9 +173,24 @@ class AttendeeAliasTests(unittest.TestCase):
                 elif number == 8:
                     self.assertEqual(namespace["remote_source_name"], "bob02-sp-remote-source")
                     self.assertEqual(namespace["remote_base_name"], "bob02-sp-remote-kb")
-                else:
+                elif number in (4, 5, 6):
                     suffix = {4: "blob-chunks", 5: "cu-chunks", 6: "push-chunks"}[number]
                     self.assertEqual(namespace["index_name"], f"bob02-{suffix}")
+                elif number == 9:
+                    self.assertEqual(namespace["webiq_source_name"], "bob02-nb14-webiq")
+                elif number == 10:
+                    self.assertEqual(namespace["blob_source_name"], "bob02-nb10-blob")
+                    self.assertEqual(namespace["webiq_api_key"], "env-test-key")
+                elif number == 11:
+                    self.assertEqual(namespace["knowledge_base_name"], "bob02-kb")
+                elif number == 12:
+                    self.assertEqual(namespace["knowledge_base_name"], "bob02-apim-kb")
+                elif number == 13:
+                    self.assertEqual(namespace["agent_folder"], Path("..") / "bob02-hosted-agent")
+                elif number == 14:
+                    self.assertEqual(namespace["agent_folder"], Path("..") / "bob02-hosted-agent-iq")
+                elif number == 15:
+                    self.assertEqual(namespace["prefix"], "bob02")
                 if number in (2, 3):
                     namespace["AIProjectClient"].assert_called_once_with(**expected_client)
 
@@ -181,11 +203,12 @@ class AttendeeAliasTests(unittest.TestCase):
             6: ("index_name",),
             7: ("index_name", "data_source_name", "skillset_name", "indexer_name"),
             8: ("remote_source_name", "remote_base_name"),
-            9: ("blob_source_name", "sharepoint_source_name", "webiq_source_name", "knowledge_base_name"),
-            10: ("knowledge_base_name",),
-            11: ("agent_name", "agent_folder"),
-            12: ("knowledge_base_name", "connection_name", "toolbox_name", "agent_name", "agent_folder"),
-            14: ("webiq_source_name", "knowledge_base_name"),
+            9: ("webiq_source_name", "knowledge_base_name"),
+            10: ("blob_source_name", "webiq_source_name", "knowledge_base_name"),
+            11: ("blob_source_name", "sharepoint_source_name", "webiq_source_name", "knowledge_base_name"),
+            12: ("knowledge_base_name",),
+            13: ("agent_name", "agent_folder"),
+            14: ("knowledge_base_name", "connection_name", "toolbox_name", "agent_name", "agent_folder"),
         }
         for number, keys in objects.items():
             with self.subTest(notebook=number):
@@ -205,9 +228,9 @@ class AttendeeAliasTests(unittest.TestCase):
                 webiq = self.configure(2, alias)
                 toolbox = self.configure(3, alias)
                 self.assertEqual(webiq["connection_name"], toolbox["webiq_connection_name"])
-                kb = self.configure(9, alias)
-                apim = self.configure(10, alias)
-                hosted = self.configure(12, alias)
+                kb = self.configure(11, alias)
+                apim = self.configure(12, alias)
+                hosted = self.configure(14, alias)
                 self.assertEqual(kb["blob_source_name"], apim["blob_source_name"])
                 self.assertEqual(kb["sharepoint_source_name"], apim["sharepoint_source_name"])
                 self.assertEqual(kb["blob_source_name"], hosted["blob_source_name"])

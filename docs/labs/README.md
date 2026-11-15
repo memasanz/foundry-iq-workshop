@@ -21,6 +21,10 @@ or [optional legacy Polyglot Notebooks](../../c-sharp-notebooks/README.md). See 
 
 Compare **04, 05 and 06**: text splitting in an indexer, PDF extraction/chunking with Content Understanding, and Python chunking with push ingestion. **07 and 08 are alternative SharePoint approaches**; notebook 08 does not require notebook 07's app registration.
 
+Build knowledge bases progressively: **09 (Web IQ only) -> 10 (Web IQ + Blob) -> 11 (Web IQ + Blob + indexed SharePoint)**.
+Notebook 09 needs no indexes. Notebook 10 uses the Content Understanding Blob index from 05, without SharePoint.
+Notebook 11 adds the existing SharePoint index from 07; remote SharePoint notebook 08 is not a prerequisite.
+
 Lab 04 also has a [supported C# console app](../../c-sharp-console-apps/04-blob-indexer-skills/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/04-blob-indexer-skills.ipynb).
 Lab 05 has a [supported C# console app](../../c-sharp-console-apps/05-blob-content-understanding/README.md)
@@ -32,6 +36,12 @@ for application-owned chunking, embedding and push ingestion.
 Lab 08 has a [supported C# console app](../../c-sharp-console-apps/08-sharepoint-remote/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/08-sharepoint-remote.ipynb)
 for user-authorized remote SharePoint retrieval without indexing.
+Lab 09 has a [supported C# console app](../../c-sharp-console-apps/09-foundry-iq-webiq-only/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/09-foundry-iq-webiq-only.ipynb)
+for a standalone Web IQ-only knowledge base, with no indexes or APIM.
+Lab 10 has a [supported C# console app](../../c-sharp-console-apps/10-foundry-iq-webiq-blob/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/10-foundry-iq-webiq-blob.ipynb)
+for combining Web IQ with lab 05's existing Content Understanding Blob index.
 
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|
@@ -40,22 +50,23 @@ for user-authorized remote SharePoint retrieval without indexing.
 | [06 - Chunk, embed and push](../../python-notebooks/06-push-chunks-vectors.ipynb) | 35-45 min | Do chunking and embedding in Python or C#, then upload to a separate index. Can run without notebook 04 or Blob access. |
 | [07 - SharePoint indexed](../../python-notebooks/07-sharepoint-indexed.ipynb) | 60-90 min | Use Content Understanding semantic text chunks, embeddings and Entra ACL projections, following the text-only setup-index sample. Requires app/consent/site setup; no Vision components. |
 | [08 - SharePoint remote](../../python-notebooks/08-sharepoint-remote.ipynb) | 20-30 min | Retrieve from SharePoint without copying content into an index. Requires Microsoft 365 Copilot licensing or enabled Retrieval API billing. |
-| [09 - Foundry IQ knowledge base](../../python-notebooks/09-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine the existing Blob and indexed SharePoint indexes with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
-| [10 - Foundry IQ through APIM](../../python-notebooks/10-foundry-iq-apim.ipynb) | 30-40 min | Build on notebook 09 using an existing API Management gateway that validates callers and protects the Web IQ key. |
-| [11 - Hosted agent](../../python-notebooks/11-hosted-agent.ipynb) | 20-30 min | Deploy a small code-based agent to Foundry, without Docker. Needs Foundry and the chat model, not notebooks 09-10. |
-| [12 - Hosted agent + Foundry IQ toolbox](../../python-notebooks/12-foundry-iq-toolbox-agent.ipynb) | 30-40 min | Combine the patterns from 09 and 11. Uses Blob content, a shared toolbox connection and a per-agent Search role. |
-| [14 - Foundry IQ with Web IQ only](../../python-notebooks/14-foundry-iq-webiq-only.ipynb) | 15-25 min | Create a standalone Web IQ-only knowledge base, without APIM or indexes. Inspect MCP activity, URLs and passages; compare answer synthesis with extractive retrieval. Does not require 09 or 10. |
+| [09 - Foundry IQ with Web IQ only](../../python-notebooks/09-foundry-iq-webiq-only.ipynb) | 15-25 min | Create a standalone Web IQ-only knowledge base, without APIM or indexes. Inspect MCP activity, URLs and passages; compare answer synthesis with extractive retrieval. |
+| [10 - Foundry IQ with Web IQ + Blob](../../python-notebooks/10-foundry-iq-webiq-blob.ipynb) | 30-40 min | Combine live Web IQ with the Content Understanding Blob index from 05 (`<prefix>-cu-chunks`). Compare web, document and mixed evidence without SharePoint or reindexing. |
+| [11 - Foundry IQ knowledge base](../../python-notebooks/11-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine the existing Blob and indexed SharePoint indexes with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
+| [12 - Foundry IQ through APIM](../../python-notebooks/12-foundry-iq-apim.ipynb) | 30-40 min | Build on notebook 11 using an existing API Management gateway that validates callers and protects the Web IQ key. |
+| [13 - Hosted agent](../../python-notebooks/13-hosted-agent.ipynb) | 20-30 min | Deploy a small code-based agent to Foundry, without Docker. Needs Foundry and the chat model, not notebooks 11-12. |
+| [14 - Hosted agent + Foundry IQ toolbox](../../python-notebooks/14-foundry-iq-toolbox-agent.ipynb) | 30-40 min | Combine the patterns from 11 and 13. Uses Blob content, a shared toolbox connection and a per-agent Search role. |
 
-**Optional extension:** [13 - Web IQ authentication](../../python-notebooks/13-web-iq-authentication.ipynb) (25-35 min) explores Entra tokens and managed identities instead of API keys. It is independent of the Search labs and needs a separate caller app/profile binding. Managed-identity exercises require Azure compute exposing that identity; the local exercise uses a hidden secret prompt.
+**Optional extension:** [15 - Web IQ authentication](../../python-notebooks/15-web-iq-authentication.ipynb) (25-35 min) explores Entra tokens and managed identities instead of API keys. It is independent of the Search labs and needs a separate caller app/profile binding. Managed-identity exercises require Azure compute exposing that identity; the local exercise uses a hidden secret prompt.
 
 [Workshop home](../../README.md) | [Participant setup](../participants/README.md) | [Facilitator preparation](../facilitators/README.md)
 
 For class-wide approvals and resource readiness, see [what to arrange before class](../facilitators/README.md#arrange-these-before-class).
 
-### Use notebook 09's knowledge base in the Foundry IQ portal
+### Use notebook 11's knowledge base in the Foundry IQ portal
 
 1. Put the workshop `WEBIQ_API_KEY` in local `.env`; never paste the key into chat or commit it.
-2. Run notebook 09's **Configuration** and **Web IQ knowledge source** (`create-webiq-source`) cells. The source PUT stores the key under `mcpServerParameters.authentication`, using `kind: storedHeaders` and `headers: { "x-apikey": ... }` inside `storedHeadersParameters`. On a first run, also complete the notebook through **Create the knowledge base**.
+2. Run notebook 11's **Configuration** and **Web IQ knowledge source** (`create-webiq-source`) cells. The source PUT stores the key under `mcpServerParameters.authentication`, using `kind: storedHeaders` and `headers: { "x-apikey": ... }` inside `storedHeadersParameters`. On a first run, also complete the notebook through **Create the knowledge base**.
 3. Open the existing `{prefix}-kb` in the Foundry IQ portal, refresh it, and start a new chat. No index rebuild or knowledge-base recreation is needed when updating source authentication.
 4. Ask **What is the latest stable release of Python, and when was it released?** Confirm Web IQ activity and references, then try the notebook's Blob/web comparison.
 

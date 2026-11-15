@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, Mock, patch
 
 from azure.ai.projects.models import AgentVersionStatus
 
-from test_notebooks import code_cell
+from test_notebooks import ROOT, code_cell
 
-HOSTED = "11-hosted-agent.ipynb"
+HOSTED = "13-hosted-agent.ipynb"
 
 
 class HostedAgentNotebookTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory(dir=ROOT, prefix=".test-hosted-")
         self.folder = Path(self.tmp.name) / "hosted-agent"
         self.ns = {
             "Path": Path,

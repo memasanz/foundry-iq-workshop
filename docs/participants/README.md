@@ -8,11 +8,11 @@
 
 | Code option | Available labs | How to explore |
 |---|---|---|
-| [Python notebooks](python.md) | 01-14 | Python/Jupyter cells; follow the Python setup guide. |
-| [C# console apps](c-sharp.md) | 01-06, 08 | Supported .NET 10 console apps; direct APIs, agents, toolboxes, Search indexing and remote SharePoint retrieval. |
-| [C# Polyglot Notebooks](c-sharp.md) | 01-06, 08 | C# cells in optional legacy Polyglot Notebooks (`.ipynb`); deprecated tooling. |
+| [Python notebooks](python.md) | 01-15 | Python/Jupyter cells; follow the Python setup guide. |
+| [C# console apps](c-sharp.md) | 01-06, 08-10 | Supported .NET 10 console apps; direct APIs, agents, toolboxes, Search indexing, remote SharePoint retrieval and Web IQ knowledge bases. |
+| [C# Polyglot Notebooks](c-sharp.md) | 01-06, 08-10 | C# cells in optional legacy Polyglot Notebooks (`.ipynb`); deprecated tooling. |
 
-The tracks share the root `.env` and `.env.azure`. Lab 07 and labs 09-14 have not been translated to C# yet. No Python installation is required for the console apps.
+The tracks share the root `.env` and `.env.azure`. Lab 07 and labs 11-15 have not been translated to C# yet. No Python installation is required for the console apps.
 
 Create your local settings file without replacing an existing one:
 
@@ -33,13 +33,13 @@ All labs use the same local environment. Edit `.env` only for the labs you plan 
 
 | Setting | When you need it |
 |---|---|
-| `WEBIQ_API_KEY` | Web IQ calls/connections; notebook 09 stores it in its Web IQ knowledge source for portal/notebook retrieval. Use a workshop-only key. |
+| `WEBIQ_API_KEY` | Web IQ calls/connections; notebooks 09-11 store it in their Web IQ knowledge sources for portal/notebook retrieval. Use a workshop-only key. |
 | `WORKSHOP_PREFIX` | Your attendee alias throughout the workshop, such as `alice01` (3-20 lowercase letters/digits, starting with a letter). Keep the same value between notebooks. |
-| `SHAREPOINT_SITE_URL` | SharePoint ingestion/remote labs (07-08); 09 references the existing index instead. |
+| `SHAREPOINT_SITE_URL` | SharePoint ingestion/remote labs (07-08); 11 references the existing index instead. Notebooks 09-10 need no SharePoint settings. |
 | Three `SHAREPOINT_*` app/identity IDs | Indexed SharePoint only; supplied after facilitator setup. Notebook 08 does not need them. |
-| `APIM_RESOURCE_ID` | Facilitator setup for notebook 10's existing gateway. Participants receive the printed `APIM_GATEWAY_URL`, `BROKER_APP_CLIENT_ID` and `WEBIQ_APIM_SOURCE_NAME`. |
+| `APIM_RESOURCE_ID` | Facilitator setup for notebook 12's existing gateway. Participants receive the printed `APIM_GATEWAY_URL`, `BROKER_APP_CLIENT_ID` and `WEBIQ_APIM_SOURCE_NAME`. |
 
-Every notebook starts with its required participant permissions and facilitator/service-identity prerequisites. Use your alias for all attendee-created top-level objects: connections, agents, toolboxes, indexes, data sources, skillsets, indexers, knowledge sources/bases, Blob folders and generated-agent folders. Notebooks 01 and 13 only make requests and create no named resources. Fields/tool labels inside your objects and service-generated IDs stay unchanged. Shared Azure services, models, the ingestion app, notebook 10's Web IQ source and notebook 12's facilitator connection remain shared. **Aliases prevent naming collisions, not provide security isolation**; the workshop's Search roles can still access other attendees' objects.
+Every notebook starts with its required participant permissions and facilitator/service-identity prerequisites. Use your alias for all attendee-created top-level objects: connections, agents, toolboxes, indexes, data sources, skillsets, indexers, knowledge sources/bases, Blob folders and generated-agent folders. Notebooks 01 and 15 only make requests and create no named resources. Fields/tool labels inside your objects and service-generated IDs stay unchanged. Shared Azure services, models, the ingestion app, notebook 12's Web IQ source and notebook 14's facilitator connection remain shared. **Aliases prevent naming collisions, not provide security isolation**; the workshop's Search roles can still access other attendees' objects.
 
 Notebook 02 stores the workshop Web IQ key in the `{prefix}-webiq-mcp` Foundry connection; sufficiently privileged project members can access it. Notebooks 02 and 03 derive the connection name from `WORKSHOP_PREFIX`, so keep the same prefix in both. Use a workshop-only key and rotate/revoke it afterward. Keep the connection until both labs are finished.
 
@@ -54,7 +54,7 @@ For the Python and Polyglot notebook paths:
 ## Start your chosen labs
 
 Open the [lab guide](../labs/README.md) for the exercise order, times and prerequisites.
-The [lab 09 portal walkthrough](../labs/README.md#use-notebook-09s-knowledge-base-in-the-foundry-iq-portal)
+The [lab 11 portal walkthrough](../labs/README.md#use-notebook-11s-knowledge-base-in-the-foundry-iq-portal)
 explains its Web IQ source configuration and key rotation.
 
 For scripted runs and offline checks, see [running and checking notebooks](../reference/README.md#running-and-checking-notebooks).

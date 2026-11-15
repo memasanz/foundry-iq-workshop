@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), and [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb).
+Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb), [lab 09 - Foundry IQ with Web IQ only](09-foundry-iq-webiq-only.ipynb), and [lab 10 - Foundry IQ with Web IQ + Blob](10-foundry-iq-webiq-blob.ipynb).
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -197,4 +197,41 @@ as the signed-in user. There is no custom app registration, indexer, document co
 The site filter selects content, but Microsoft 365 document permissions are the authorization boundary.
 Test allowed and denied documents separately. Gateway failures print correlation details before stopping.
 Live Retrieval API calls are subject to licensing, quota and billing; optional cleanup is off by default.
+Clear outputs before sharing.
+
+## 11. Open and run lab 09
+
+Lab 09 creates a standalone Web IQ-only knowledge base using existing Search and Foundry model resources.
+It needs a Web IQ profile API key, `WORKSHOP_PREFIX`, root settings files and Azure CLI sign-in.
+No Blob or SharePoint index, APIM gateway, prompt agent or earlier lab is required.
+See [lab 09 settings, permissions and step instructions](../c-sharp-console-apps/09-foundry-iq-webiq-only/README.md).
+
+Open [09-foundry-iq-webiq-only.ipynb](09-foundry-iq-webiq-only.ipynb) with the same C# kernel and working directory.
+Run its inline helpers and numbered sections in order; no console-app imports are needed.
+It configures a stored `x-apikey` on the Web IQ source, enables only the `web` tool, creates the knowledge base,
+and compares answer synthesis with extractive retrieval. Inspect MCP activity, cited URLs and passages.
+The portal screenshot is included; the legacy `nb14` resource suffix is retained to reuse existing resources.
+
+The unauthenticated HTTPS probe is optional troubleshooting, not a permissions check; HTTP 401 is expected.
+Keep the Web IQ key out of outputs and source control. Live retrieval and synthesis can incur charges.
+Cleanup is explicitly opt-in and targets only this lab's named knowledge base and source.
+Clear outputs before sharing.
+
+## 12. Open and run lab 10
+
+Lab 10 combines Web IQ with lab 05's existing Content Understanding Blob index, `<prefix>-cu-chunks`.
+Complete lab 05 using either language track with the same `WORKSHOP_PREFIX`.
+Configure existing Search and Foundry model resources, the Web IQ profile key and Azure CLI sign-in.
+No SharePoint, APIM, new index or reingestion is required.
+See [lab 10 settings, permissions and step instructions](../c-sharp-console-apps/10-foundry-iq-webiq-blob/README.md).
+
+Open [10-foundry-iq-webiq-blob.ipynb](10-foundry-iq-webiq-blob.ipynb) with the same C# kernel and working directory.
+Run its inline helpers and numbered sections in order, without console-app imports.
+It checks the populated index read-only, creates two knowledge sources and a separate knowledge base,
+then compares Blob-only, web-only and mixed retrieval in synthesized or extractive output modes.
+The portal screenshot illustrates separate public and internal questions; inspect references and activity
+to establish which sources answered a particular request.
+
+Keep the stored Web IQ key out of logs and source control. Live retrieval, planning and synthesis can incur charges.
+Cleanup is explicitly opt-in and deletes only this lab's knowledge base and source definitions, not the CU index.
 Clear outputs before sharing.
