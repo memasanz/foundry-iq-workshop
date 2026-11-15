@@ -375,7 +375,7 @@ public sealed class ToolboxOfflineHandler : HttpMessageHandler
                         ["audience"] = "https://ai.azure.com",
                         ["target"] = "https://workshop.services.ai.azure.com/api/projects/workshop/toolboxes/alice01-webiq-toolbox/versions/"
                         + (Mode == "stale-connection" ? "8" : "7") + "/mcp?api-version=v1",
-                        ["isSharedToAll"] = true,
+                        ["isSharedToAll"] = false,
                         ["metadata"] = new JsonObject
                         { ["type"] = "toolbox_MCP", ["toolboxName"] = "alice01-webiq-toolbox", ["toolboxVersion"] = "7" },
                     }

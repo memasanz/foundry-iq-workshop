@@ -113,7 +113,6 @@ public sealed class ToolboxWorkshop
         JsonNode? p = connection?["properties"];
         if (Text(p?["category"]) != "RemoteTool" || Text(p?["authType"]) != "UserEntraToken"
             || Text(p?["target"]) != toolboxUrl || Text(p?["audience"]) != "https://ai.azure.com"
-            || p?["isSharedToAll"]?.GetValue<bool>() != true
             || Text(p?["metadata"]?["type"]) != "toolbox_MCP" || Text(p?["metadata"]?["toolboxName"]) != ToolboxName
             || Text(p?["metadata"]?["toolboxVersion"]) != Required(version, "version"))
             throw new InvalidOperationException("Existing agent-to-toolbox connection does not match the selected version. Run toolbox-connection then agent; do not reuse a mismatched older agent.");
