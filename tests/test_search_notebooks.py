@@ -62,6 +62,7 @@ def search_namespace():
     http = namespace["requests"]
     http.request.side_effect = lambda method, url, **kwargs: getattr(http, method.lower())(url, **kwargs)
     exec(code_cell(SP_INDEXED, "search-client"), namespace)
+    exec(code_cell(BLOB, "http-response-check"), namespace)
     return namespace
 
 
@@ -72,6 +73,78 @@ def run_cell(notebook, cell_id, ns, replacements=None):
     with patch("builtins.print") as output:
         exec(source, ns)
     return output
+
+
+class BlobRestResponseTests(unittest.TestCase):
+    def setUp(self):
+        from datetime import datetime, timezone
+        from email.utils import format_datetime
+
+        self.ns = search_namespace()
+        self.ns.update(datetime=datetime, timezone=timezone, format_datetime=format_datetime,
+                       question="public question")
+
+    def response(self, status, body=""):
+        response = requests.Response()
+        response.status_code = status
+        response.reason = "Synthetic response"
+        response._content = body.encode("utf-8")
+        response.request = requests.Request(
+            "POST", "https://workshop.search.windows.net/",
+            headers={"Authorization": "Bearer secret-test-token"},
+        ).prepare()
+        return response
+
+    def test_failed_rest_cells_print_body_and_stop_before_success_or_json_parsing(self):
+        operations = {
+            "upload-blobs": "put", "create-data-source": "put", "create-index": "put",
+            "create-skillset": "put", "create-indexer": "put", "monitor-indexer": "get",
+            "inspect-chunks": "post", "verify-vectors": "post", "query-index": "post",
+            "query-vector": "post", "query-hybrid": "post", "query-semantic": "post",
+            "query-semantic-hybrid": "post",
+        }
+        for cell, method in operations.items():
+            for status in (403, 429, 206):
+                with self.subTest(cell=cell, status=status):
+                    self.ns["requests"].get.return_value = self.response(404)
+                    response = self.response(status, "Synthetic service error")
+                    getattr(self.ns["requests"], method).return_value = response
+                    with patch("builtins.print") as output, self.assertRaises(requests.HTTPError):
+                        exec(code_cell(BLOB, cell), self.ns)
+                    messages = str(output.call_args_list)
+                    self.assertIn(f"HTTP {status}", messages)
+                    self.assertIn("Synthetic service error", messages)
+                    self.assertNotIn("secret-test-token", messages)
+                    self.assertNotIn("ready:", messages)
+                    self.assertNotIn("Uploaded:", messages)
+
+    def test_create_update_statuses_and_indexer_run_status_are_checked(self):
+        for cell in ("create-data-source", "create-index", "create-skillset", "create-indexer"):
+            for status in (200, 201, 204):
+                with self.subTest(cell=cell, status=status):
+                    self.ns["requests"].get.return_value = self.response(404)
+                    self.ns["requests"].put.return_value = self.response(status)
+                    run_cell(BLOB, cell, self.ns)
+        self.ns["requests"].get.return_value = self.response(
+            200, '{"lastResult":{"status":"success","startTime":"old-run"}}',
+        )
+        self.ns["requests"].put.return_value = self.response(204)
+        self.ns["requests"].post.return_value = self.response(202)
+        run_cell(BLOB, "create-indexer", self.ns)
+        self.ns["requests"].post.return_value = self.response(200, "Unexpected run status")
+        with self.assertRaises(requests.HTTPError):
+            run_cell(BLOB, "create-indexer", self.ns)
+
+    def test_diagnostics_are_bounded_include_retry_headers_and_keep_response(self):
+        response = self.response(429, "x" * 9000)
+        response.headers["retry-after"] = "5"
+        response.headers["x-ms-request-id"] = "synthetic-request"
+        with patch("builtins.print") as output, self.assertRaises(requests.HTTPError) as raised:
+            self.ns["check_response"](response, (200,))
+        self.assertIs(raised.exception.response, response)
+        output.assert_any_call("Response body:", "x" * 8000)
+        output.assert_any_call("retry-after: 5")
+        output.assert_any_call("x-ms-request-id: synthetic-request")
 
 
 class SearchCellTests(unittest.TestCase):
@@ -96,6 +169,7 @@ class SearchCellTests(unittest.TestCase):
         from email.utils import format_datetime
 
         self.ns.update(datetime=datetime, timezone=timezone, format_datetime=format_datetime)
+        self.http.put.return_value = http_response(201, {})
         run_cell(BLOB, "upload-blobs", self.ns)
         self.assertEqual(self.http.put.call_count, 2)
         for call in self.http.put.call_args_list:
@@ -328,7 +402,8 @@ class SearchCellTests(unittest.TestCase):
                     (200, {"@search.semanticPartialResponseReason": "capacityOverloaded"}),
                 ]:
                     self.http.post.return_value = http_response(status, body)
-                    with self.assertRaisesRegex(RuntimeError, "Semantic ranking did not complete"):
+                    expected_error = requests.HTTPError if notebook == BLOB and status == 206 else RuntimeError
+                    with self.assertRaises(expected_error):
                         run_cell(notebook, cell, self.ns)
             for status in (403, 429):
                 self.http.post.return_value = http_response(status, {})
@@ -575,6 +650,7 @@ class SearchCellTests(unittest.TestCase):
             self.assertEqual(mapping["metadata_spo_item_path"], "/document/metadata_spo_item_path")
 
     def test_indexers_connect_skillset_and_reject_failed_items(self):
+        self.http.post.return_value = http_response(202, {})
         for notebook in (BLOB, CU, SP_INDEXED):
             with self.subTest(notebook=notebook):
                 run_cell(notebook, "create-indexer", self.ns)
@@ -590,6 +666,7 @@ class SearchCellTests(unittest.TestCase):
                     self.assertNotIn("imageAction", configuration)
 
     def test_indexer_creation_and_update_do_not_confuse_old_run_with_new_run(self):
+        self.http.post.return_value = http_response(202, {})
         for notebook in (BLOB, CU, SP_INDEXED):
             self.http.post.reset_mock()
             self.http.get.return_value = http_response(404, {})

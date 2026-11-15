@@ -39,6 +39,7 @@ def rest_namespace():
 
 def http_response(status, data, headers=None):
     response = Mock(status_code=status, headers=headers or {})
+    response.text = json.dumps(data)
     response.json.return_value = data
     if status >= 400:
         response.raise_for_status.side_effect = requests.HTTPError(f"HTTP {status}")
@@ -138,7 +139,7 @@ class AttendeeAliasTests(unittest.TestCase):
         def load_settings(path, override=False):
             return load_dotenv(stream=StringIO(files[path]), override=override)
 
-        for number in (2, 3):
+        for number in (2, 3, 4):
             with self.subTest(notebook=number):
                 loader = Mock(side_effect=load_settings)
                 namespace = self.configure(number, "processalias", dotenv_loader=loader)
@@ -153,10 +154,13 @@ class AttendeeAliasTests(unittest.TestCase):
                 if number == 2:
                     self.assertEqual(namespace["api_key"], "env-test-key")
                     self.assertEqual(namespace["connection_name"], "bob02-webiq-mcp")
-                else:
+                elif number == 3:
                     self.assertEqual(namespace["webiq_connection_name"], "bob02-webiq-mcp")
                     expected_client["allow_preview"] = True
-                namespace["AIProjectClient"].assert_called_once_with(**expected_client)
+                else:
+                    self.assertEqual(namespace["index_name"], "bob02-blob-chunks")
+                if number in (2, 3):
+                    namespace["AIProjectClient"].assert_called_once_with(**expected_client)
 
     def test_two_attendees_have_disjoint_created_names_and_local_folders(self):
         objects = {
