@@ -23,6 +23,9 @@ Compare **04, 05 and 06**: text splitting in an indexer, PDF extraction/chunking
 
 Lab 04 also has a [supported C# console app](../../c-sharp-console-apps/04-blob-indexer-skills/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/04-blob-indexer-skills.ipynb).
+Lab 05 has a [supported C# console app](../../c-sharp-console-apps/05-blob-content-understanding/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/05-blob-content-understanding.ipynb)
+for the Content Understanding pipeline.
 
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|

@@ -139,7 +139,7 @@ class AttendeeAliasTests(unittest.TestCase):
         def load_settings(path, override=False):
             return load_dotenv(stream=StringIO(files[path]), override=override)
 
-        for number in (2, 3, 4):
+        for number in (2, 3, 4, 5):
             with self.subTest(notebook=number):
                 loader = Mock(side_effect=load_settings)
                 namespace = self.configure(number, "processalias", dotenv_loader=loader)
@@ -158,7 +158,8 @@ class AttendeeAliasTests(unittest.TestCase):
                     self.assertEqual(namespace["webiq_connection_name"], "bob02-webiq-mcp")
                     expected_client["allow_preview"] = True
                 else:
-                    self.assertEqual(namespace["index_name"], "bob02-blob-chunks")
+                    self.assertEqual(namespace["index_name"],
+                                     "bob02-blob-chunks" if number == 4 else "bob02-cu-chunks")
                 if number in (2, 3):
                     namespace["AIProjectClient"].assert_called_once_with(**expected_client)
 

@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), and [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb).
+Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), and [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb).
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -137,3 +137,23 @@ Unexpected REST statuses print diagnostic bodies and stop the cell; indexer fail
 Text-based PDFs are supported, but OCR and physical PDF page metadata are not configured in this lab.
 Indexing and query-time embeddings and semantic ranking can incur charges.
 Use synthetic data, preserve the resource-prefix scope, and clear outputs before sharing.
+
+## 8. Open and run lab 05
+
+Lab 05 is independent of labs 01-04. Configure existing Search, Blob Storage, Foundry and embedding resources
+in the root settings files, set `WORKSHOP_PREFIX`, and sign in with Azure CLI.
+No Web IQ API key or Foundry prompt agent is needed.
+Search's managed identity needs **Cognitive Services User** on the attached Foundry resource for
+Content Understanding, in addition to Blob read and embedding inference access.
+See [lab 05 settings and permissions](../c-sharp-console-apps/05-blob-content-understanding/README.md).
+
+Open [05-blob-content-understanding.ipynb](05-blob-content-understanding.ipynb) with the same C# kernel and working directory.
+Run its inline helpers and numbered sections in order; REST payloads remain visible and no console-app imports are needed.
+It follows Python lab 05: upload the original two-page PDF, extract Markdown with Content Understanding,
+embed each section, project page metadata into a separate index, and retrieve semantic-hybrid evidence.
+The pipeline diagram, Search Explorer screenshot and skill-parameters link are included.
+
+Fixed-size chunking uses 1,000 characters with 200-character overlap, not physical PDF page boundaries.
+The page ranges identify where each chunk originated; chunks can span pages.
+There are no experiments, extra reprocessing or cleanup cells. Resources are retained.
+Live analysis, embeddings and semantic ranking can incur charges; use synthetic data and clear outputs before sharing.

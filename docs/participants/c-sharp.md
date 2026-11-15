@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01-04. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-05. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -152,6 +152,49 @@ Offline checks use synthetic HTTP responses, credentials and sample files:
 ```powershell
 dotnet run --project .\tests\c-sharp-search
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p test_csharp_search_notebook.py -v
+```
+
+The notebook check additionally needs the existing Python test environment and optional legacy
+`.NET Interactive` tool. Neither check makes live Azure calls.
+
+### C# console app (lab 05)
+
+Lab 05 uses .NET 10 and visible REST requests to extract an original PDF with Content Understanding,
+embed its Markdown sections and retrieve evidence with source URLs and page ranges.
+It is independent of labs 01-04 and needs no Web IQ API key or Foundry prompt agent.
+Configure existing Search, Storage, Foundry and embedding resources, set `WORKSHOP_PREFIX`,
+and sign in with Azure CLI.
+
+Your identity needs Search management/query and Blob upload access.
+Search's managed identity needs Blob read access and **Cognitive Services User** on the attached Foundry resource;
+embedding-only access is insufficient for Content Understanding.
+Enable semantic ranker for the retrieval step. See [lab 05 prerequisites and step overview](../../c-sharp-console-apps/05-blob-content-understanding/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\05-blob-content-understanding -- --help
+dotnet run --project .\c-sharp-console-apps\05-blob-content-understanding -- run
+```
+
+Use the separate commands listed by `--help` to upload, create Search objects, monitor indexing,
+inspect Markdown/page metadata and query independently.
+The complete `run` follows the same workflow; no experiments, extra reprocessing or cleanup commands are included.
+Resources are retained. Use synthetic PDFs; Content Understanding, embeddings and semantic ranking can incur charges.
+
+### Optional legacy C# notebook (lab 05)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[05-blob-content-understanding.ipynb](../../c-sharp-notebooks/05-blob-content-understanding.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings and sample-data paths resolve.
+Its commented helpers are inline, with no console-app imports.
+The notebook includes Python lab 05's pipeline diagram, Search Explorer screenshot,
+skill-parameters link and Markdown/page-range explanations.
+Fixed-size chunks may span physical pages; the location metadata supports tracing evidence back to the PDF.
+
+Offline checks use synthetic HTTP responses and credentials:
+
+```powershell
+dotnet run --project .\tests\c-sharp-content-understanding
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_csharp_content_understanding_notebook.py -v
 ```
 
 The notebook check additionally needs the existing Python test environment and optional legacy

@@ -1,0 +1,562 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "claude",
+  "elements": [
+    {
+      "id": "title",
+      "type": "text",
+      "x": 60,
+      "y": 35,
+      "width": 1620,
+      "height": 90.0,
+      "text": "Content Understanding -> Azure AI Search",
+      "originalText": "Content Understanding -> Azure AI Search",
+      "fontSize": 36,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "subtitle",
+      "type": "text",
+      "x": 60,
+      "y": 95,
+      "width": 1620,
+      "height": 57.5,
+      "text": "Turn a PDF into searchable chunks with traceable page ranges",
+      "originalText": "Turn a PDF into searchable chunks with traceable page ranges",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-1",
+      "type": "rectangle",
+      "x": 60,
+      "y": 140,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#0078D4",
+      "backgroundColor": "#CFE4FA",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-1-title",
+      "type": "text",
+      "x": 78,
+      "y": 160,
+      "width": 314,
+      "height": 57.5,
+      "text": "1 PDF in Blob Storage",
+      "originalText": "1 PDF in Blob Storage",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-1-body",
+      "type": "text",
+      "x": 78,
+      "y": 220,
+      "width": 314,
+      "height": 157.5,
+      "text": "Original two-page PDF\nEntra-authenticated upload\nSource file stays in Blob",
+      "originalText": "Original two-page PDF\nEntra-authenticated upload\nSource file stays in Blob",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-2",
+      "type": "rectangle",
+      "x": 480,
+      "y": 140,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#0078D4",
+      "backgroundColor": "#CFE4FA",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-2-title",
+      "type": "text",
+      "x": 498,
+      "y": 160,
+      "width": 314,
+      "height": 57.5,
+      "text": "2 Blob indexer",
+      "originalText": "2 Blob indexer",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-2-body",
+      "type": "text",
+      "x": 498,
+      "y": 220,
+      "width": 314,
+      "height": 157.5,
+      "text": "Reads original file bytes\nRuns the Search skillset\nUses its managed identity",
+      "originalText": "Reads original file bytes\nRuns the Search skillset\nUses its managed identity",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-3",
+      "type": "rectangle",
+      "x": 900,
+      "y": 140,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#5C2D91",
+      "backgroundColor": "#E8DAEF",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-3-title",
+      "type": "text",
+      "x": 918,
+      "y": 160,
+      "width": 314,
+      "height": 57.5,
+      "text": "3 Content Understanding",
+      "originalText": "3 Content Understanding",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-3-body",
+      "type": "text",
+      "x": 918,
+      "y": 220,
+      "width": 314,
+      "height": 157.5,
+      "text": "Extracts Markdown chunks\nPreserves page ranges\nand document locations",
+      "originalText": "Extracts Markdown chunks\nPreserves page ranges\nand document locations",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-4",
+      "type": "rectangle",
+      "x": 1320,
+      "y": 140,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#5C2D91",
+      "backgroundColor": "#E8DAEF",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-4-title",
+      "type": "text",
+      "x": 1338,
+      "y": 160,
+      "width": 314,
+      "height": 57.5,
+      "text": "4 Embeddings + provenance",
+      "originalText": "4 Embeddings + provenance",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-4-body",
+      "type": "text",
+      "x": 1338,
+      "y": 220,
+      "width": 314,
+      "height": 157.5,
+      "text": "Embedding for each chunk\nShaper preserves filename\nand source Blob URL",
+      "originalText": "Embedding for each chunk\nShaper preserves filename\nand source Blob URL",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-5",
+      "type": "rectangle",
+      "x": 1320,
+      "y": 540,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#107C10",
+      "backgroundColor": "#DFF6DD",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-5-title",
+      "type": "text",
+      "x": 1338,
+      "y": 560,
+      "width": 314,
+      "height": 57.5,
+      "text": "5 Index projections",
+      "originalText": "5 Index projections",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-5-body",
+      "type": "text",
+      "x": 1338,
+      "y": 620,
+      "width": 314,
+      "height": 157.5,
+      "text": "One Search document\nper extracted chunk\nMap text, vector and location",
+      "originalText": "One Search document\nper extracted chunk\nMap text, vector and location",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-6",
+      "type": "rectangle",
+      "x": 900,
+      "y": 540,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#107C10",
+      "backgroundColor": "#DFF6DD",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-6-title",
+      "type": "text",
+      "x": 918,
+      "y": 560,
+      "width": 314,
+      "height": 57.5,
+      "text": "6 Chunk index",
+      "originalText": "6 Chunk index",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-6-body",
+      "type": "text",
+      "x": 918,
+      "y": 620,
+      "width": 314,
+      "height": 157.5,
+      "text": "Markdown + stored vector\nSource filename and URL\npage_from / page_to",
+      "originalText": "Markdown + stored vector\nSource filename and URL\npage_from / page_to",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-7",
+      "type": "rectangle",
+      "x": 480,
+      "y": 540,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#0C8599",
+      "backgroundColor": "#CFEFEB",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-7-title",
+      "type": "text",
+      "x": 498,
+      "y": 560,
+      "width": 314,
+      "height": 57.5,
+      "text": "7 Hybrid + semantic",
+      "originalText": "7 Hybrid + semantic",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-7-body",
+      "type": "text",
+      "x": 498,
+      "y": 620,
+      "width": 314,
+      "height": 157.5,
+      "text": "Keyword + question vector\nSemantic reranking\nof retrieved candidates",
+      "originalText": "Keyword + question vector\nSemantic reranking\nof retrieved candidates",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-8",
+      "type": "rectangle",
+      "x": 60,
+      "y": 540,
+      "width": 350,
+      "height": 220,
+      "strokeColor": "#0C8599",
+      "backgroundColor": "#CFEFEB",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "id": "step-8-title",
+      "type": "text",
+      "x": 78,
+      "y": 560,
+      "width": 314,
+      "height": 57.5,
+      "text": "8 Retrieved evidence",
+      "originalText": "8 Retrieved evidence",
+      "fontSize": 23,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "step-8-body",
+      "type": "text",
+      "x": 78,
+      "y": 620,
+      "width": 314,
+      "height": 157.5,
+      "text": "Relevant Markdown chunks\nSource URL and page range\nInspect and verify citations",
+      "originalText": "Relevant Markdown chunks\nSource URL and page range\nInspect and verify citations",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "id": "arrow-1",
+      "type": "arrow",
+      "x": 420,
+      "y": 250,
+      "width": 50,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          50,
+          0
+        ]
+      ],
+      "strokeColor": "#495057",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "arrow-2",
+      "type": "arrow",
+      "x": 840,
+      "y": 250,
+      "width": 50,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          50,
+          0
+        ]
+      ],
+      "strokeColor": "#495057",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "arrow-3",
+      "type": "arrow",
+      "x": 1260,
+      "y": 250,
+      "width": 50,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          50,
+          0
+        ]
+      ],
+      "strokeColor": "#495057",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "arrow-4",
+      "type": "arrow",
+      "x": 1495,
+      "y": 375,
+      "width": 0,
+      "height": 150,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          150
+        ]
+      ],
+      "strokeColor": "#495057",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "arrow-5",
+      "type": "arrow",
+      "x": 1310,
+      "y": 650,
+      "width": 50,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -50,
+          0
+        ]
+      ],
+      "strokeColor": "#495057",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "arrow-6",
+      "type": "arrow",
+      "x": 890,
+      "y": 650,
+      "width": 50,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -50,
+          0
+        ]
+      ],
+      "strokeColor": "#495057",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "arrow-7",
+      "type": "arrow",
+      "x": 470,
+      "y": 650,
+      "width": 50,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -50,
+          0
+        ]
+      ],
+      "strokeColor": "#495057",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "note",
+      "type": "text",
+      "x": 60,
+      "y": 805,
+      "width": 1620,
+      "height": 52.5,
+      "text": "One PDF -> many indexed chunks. Page ranges preserve provenance; semantic ranking does not generate an answer.",
+      "originalText": "One PDF -> many indexed chunks. Page ranges preserve provenance; semantic ranking does not generate an answer.",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  }
+}
