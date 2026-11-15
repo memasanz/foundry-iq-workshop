@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01-03. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-04. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -116,3 +116,43 @@ using `c-sharp-notebooks` as the working directory. Its commented helpers are in
 Run the numbered sections in order to explore the two authentication hops:
 agent to toolbox uses Entra tokens; toolbox to Web IQ uses lab 02's stored profile-key connection.
 Rerun agent creation after updating the toolbox connection so the agent and connection target the same toolbox version.
+
+### C# console app (lab 04)
+
+Lab 04 uses .NET 10 and visible REST requests to upload Blob documents, configure a Search indexer and
+chunking/embedding skills, then compare keyword, vector, hybrid and semantic-ranked search.
+It does not require completing labs 01-03 or providing a Web IQ API key.
+Configure the existing Search, Storage and embedding resources, set `WORKSHOP_PREFIX`, and sign in with Azure CLI.
+
+Your identity needs **Search Service Contributor**, **Search Index Data Contributor** and
+**Storage Blob Data Contributor** on the relevant resources.
+Search's managed identity needs **Storage Blob Data Reader** and embedding inference access on the Foundry resource.
+Enable semantic ranker before using the semantic commands. See [lab 04 prerequisites and step overview](../../c-sharp-console-apps/04-blob-indexer-skills/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\04-blob-indexer-skills -- --help
+dotnet run --project .\c-sharp-console-apps\04-blob-indexer-skills -- run
+```
+
+Use the separate commands listed by `--help` to explore one step or search mode at a time.
+Text-based PDFs can be indexed alongside TXT files; scanned PDFs need OCR, which this lab does not configure.
+Embedding and semantic-ranking calls can incur charges. Resources are retained; use synthetic, non-sensitive data.
+
+### Optional legacy C# notebook (lab 04)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[04-blob-indexer-skills.ipynb](../../c-sharp-notebooks/04-blob-indexer-skills.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings and sample-data paths resolve.
+Run the inline helpers and numbered sections in order; no console-app imports are needed.
+The notebook includes the index screenshots, Text Split/PDF explanations, stored-vector sample check,
+query-time question embeddings, and explicit REST status/error reporting from the Python reference.
+
+Offline checks use synthetic HTTP responses, credentials and sample files:
+
+```powershell
+dotnet run --project .\tests\c-sharp-search
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_csharp_search_notebook.py -v
+```
+
+The notebook check additionally needs the existing Python test environment and optional legacy
+`.NET Interactive` tool. Neither check makes live Azure calls.

@@ -19,3 +19,5 @@ tests/c-sharp-foundry/**/bin/
 tests/c-sharp-foundry/**/obj/
 tests/c-sharp-toolbox/**/bin/
 tests/c-sharp-toolbox/**/obj/
+tests/c-sharp-search/**/bin/
+tests/c-sharp-search/**/obj/

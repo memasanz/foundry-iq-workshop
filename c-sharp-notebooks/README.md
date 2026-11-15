@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently, [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb) and [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb) are available.
+Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), and [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb).
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -120,3 +120,20 @@ Reruns publish new toolbox and agent versions and update the existing toolbox co
 Use the newly created agent version and conversation after updating the connection; older agent versions can
 still point at a different toolbox URL. The question runs once, with no automatic follow-up.
 Resources are retained, and live model/Web IQ calls incur charges. Clear outputs before sharing.
+
+## 7. Open and run lab 04
+
+Lab 04 is independent of labs 01-03. Configure existing Search, Blob Storage and embedding resources
+in the root `.env` and `.env.azure`, set `WORKSHOP_PREFIX`, and sign in with Azure CLI.
+No Web IQ API key or Foundry prompt agent is needed.
+See [lab 04 settings and permissions](../c-sharp-console-apps/04-blob-indexer-skills/README.md).
+
+Open [04-blob-indexer-skills.ipynb](04-blob-indexer-skills.ipynb) with the same C# kernel and working directory.
+Its helpers are inline, and the REST payloads remain visible in the numbered lab sections.
+It follows Python lab 04's Blob uploads, data source, index, chunking/embedding skills, indexer monitoring,
+stored-vector checks and five search modes. The portal screenshots and PDF/chunking explanations are included.
+
+Unexpected REST statuses print diagnostic bodies and stop the cell; indexer failures do not become successful results.
+Text-based PDFs are supported, but OCR and physical PDF page metadata are not configured in this lab.
+Indexing and query-time embeddings and semantic ranking can incur charges.
+Use synthetic data, preserve the resource-prefix scope, and clear outputs before sharing.

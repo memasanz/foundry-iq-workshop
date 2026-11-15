@@ -21,6 +21,9 @@ or [optional legacy Polyglot Notebooks](../../c-sharp-notebooks/README.md). See 
 
 Compare **04, 05 and 06**: text splitting in an indexer, PDF extraction/chunking with Content Understanding, and Python chunking with push ingestion. **07 and 08 are alternative SharePoint approaches**; notebook 08 does not require notebook 07's app registration.
 
+Lab 04 also has a [supported C# console app](../../c-sharp-console-apps/04-blob-indexer-skills/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/04-blob-indexer-skills.ipynb).
+
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|
 | [04 - Blob indexer and skills](../../python-notebooks/04-blob-indexer-skills.ipynb) | 45-60 min | Let Search read Blob files, split text and generate embeddings. Compare keyword, vector, hybrid and semantic-ranked search. |
