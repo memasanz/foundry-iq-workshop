@@ -26,8 +26,11 @@ Each lab has its own project folder and README with configuration, run commands 
 | 08 - SharePoint remote | Retrieve SharePoint passages as the signed-in user without an indexer or content copy | [Set up and run lab 08](08-sharepoint-remote/README.md) |
 | 09 - Foundry IQ with Web IQ only | Create a Web IQ-only knowledge base and compare synthesized answers with extractive web evidence | [Set up and run lab 09](09-foundry-iq-webiq-only/README.md) |
 | 10 - Foundry IQ with Web IQ + Blob | Combine Web IQ with the existing Content Understanding Blob index; compare document, web and mixed evidence | [Set up and run lab 10](10-foundry-iq-webiq-blob/README.md) |
+| 11 - Foundry IQ knowledge base | Combine Content Understanding Blob chunks, indexed SharePoint and Web IQ; inspect source links, page ranges and raw retrieval diagnostics | [Set up and run lab 11](11-foundry-iq-knowledge-base/README.md) |
+| 12 - Foundry IQ through APIM | Inspect the broker token, reuse existing sources and retrieve through an APIM gateway preserving user context | [Set up and run lab 12](12-foundry-iq-apim/README.md) |
+| 13 - Hosted agent | Write a C# function-tool agent, zip its source, deploy through remote build and invoke its Responses endpoint | [Set up and run lab 13](13-hosted-agent/README.md) |
 
-Labs 01-06 and 08-10 currently have C# console apps. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
+Labs 01-06 and 08-13 currently have C# console apps. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
 
 ## How the projects run
 
@@ -35,7 +38,7 @@ Use `dotnet run --project` to select a lab's project folder from the repository 
 Arguments after `--` are passed to the application. Each lab README provides complete commands you can copy.
 `dotnet run` builds the project automatically.
 
-Labs 02-06 and 08-10 also provide **separate commands for each lab step**.
+Labs 02-06 and 08-13 also provide **separate commands for each lab step**.
 Use `--help` to see their command lists, then follow the selected lab README in order.
 Each step runs separately so you can inspect discovery, connections, toolbox or agent creation, ingestion and queries.
 The `run` command still performs the complete workflow; you do not have to execute the separate steps first.
@@ -45,6 +48,8 @@ Follow the lab README when restarting the sequence; stale references stop a ques
 The lab 04 and 05 READMEs explain indexer-run monitoring and any local run references.
 Lab 06's README explains its local chunk/vector artifacts so embedding and pushing can run as separate commands.
 These ignored artifacts contain synthetic sample text and embeddings, not just run metadata; do not share them.
+Lab 13 generates real C# hosted-agent source in `<prefix>-csharp-hosted-agent`; its packaging/deployment steps
+preserve edits and do not require Python, Docker or `azd`. Foundry restores the generated agent's NuGet packages.
 
 Keep local settings in the repository-root `.env` and, when required, `.env.azure`.
 Follow the selected lab's instructions for which values to set; never put credentials in source code or commit them.

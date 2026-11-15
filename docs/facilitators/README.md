@@ -30,7 +30,7 @@ The full resource and permission matrix is in [Prepare for the workshop](../../P
 | 08 | **Microsoft 365 Copilot add-on license for each querying user**, or explicitly enabled Retrieval API pay-as-you-go. Pay-as-you-go requires at least one Copilot license in the tenant. GitHub Copilot is not a substitute. |
 | 09 | Existing Search and chat deployment, Search authoring/query access, Search identity's model access, and `WEBIQ_API_KEY`. The separate Web IQ source stores its key for direct notebook and portal queries. No document ingestion or APIM setup is required. |
 | 10 | The same Search/chat/Web IQ access plus the populated Content Understanding Blob index from 05 (`<prefix>-cu-chunks`). No SharePoint setup, new ingestion or APIM is required. |
-| 11 | Existing Blob and indexed SharePoint content from 04/05 and 07, including query-user document access, plus the Search/chat/Web IQ access above. |
+| 11 | Existing Content Understanding Blob and indexed SharePoint content from 05 and 07, including query-user document access, plus the Search/chat/Web IQ access above. |
 | 12 | An **existing APIM service**, its managed-identity Search access, and the separate broker app/policy setup below. Bicep does not create APIM. |
 | 03, 13-14 | Verify toolbox/hosted-agent preview availability in your project and region. Successful infrastructure deployment does not prove these notebook flows work end to end. |
 

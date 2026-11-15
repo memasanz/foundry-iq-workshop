@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01-06 and 08-10. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-06 and 08-13. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -365,3 +365,137 @@ $env:PYTHONPATH = '.\tests'
 
 The notebook check additionally needs the existing Python test environment and optional legacy
 `.NET Interactive` tool. Neither check makes live Azure or Web IQ calls.
+
+### C# console app (lab 11)
+
+Lab 11 combines lab 05's Content Understanding Blob index (`<prefix>-cu-chunks`),
+lab 07's ACL-enabled SharePoint index (`<prefix>-nb7-index`) and live Web IQ.
+Complete those ingestion labs first using the same prefix; lab 07 currently uses the Python track.
+Configure existing Search and Foundry resources, a Web IQ profile key and `WORKSHOP_PREFIX`
+in the root settings files, then sign in with Azure CLI.
+Your identity also needs access to the indexed SharePoint documents.
+See [lab 11 prerequisites and step overview](../../c-sharp-console-apps/11-foundry-iq-knowledge-base/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\11-foundry-iq-knowledge-base -- --help
+dotnet run --project .\c-sharp-console-apps\11-foundry-iq-knowledge-base -- run
+```
+
+Follow the README's **Run one step at a time** table to verify both indexes, create each source
+and the knowledge base independently, then ask internal, web, SharePoint or mixed questions.
+Returned references show available filenames, page ranges and URLs regardless of which source the planner selects.
+The lab creates no indexes, uploads or ingestion resources. No APIM gateway is needed.
+Live Search/model/Web IQ calls can incur charges; cleanup is explicitly confirmed and preserves the indexes.
+The stable knowledge-base/source names are reused by labs 12 and 14.
+
+### Optional legacy C# notebook (lab 11)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[11-foundry-iq-knowledge-base.ipynb](../../c-sharp-notebooks/11-foundry-iq-knowledge-base.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings paths resolve.
+Run its inline helpers and numbered sections in order, without console-app imports.
+It follows Python lab 11's index checks, source definitions, user-context authorization, rich citations
+and raw retrieval diagnostics with an explanation above the diagnostic cell.
+Private source links still require the appropriate access; diagnostic output can contain internal text.
+Clear outputs before sharing.
+
+Offline checks use synthetic HTTP responses and credentials:
+
+```powershell
+dotnet run --project .\tests\c-sharp-knowledge-base
+$env:PYTHONPATH = '.\tests'
+.\.venv\Scripts\python.exe -m unittest test_csharp_knowledge_base_notebook.KnowledgeBaseConsoleTests test_csharp_knowledge_base_notebook.KnowledgeBaseNotebookTests -v
+```
+
+The notebook check additionally needs the existing Python test environment and optional legacy
+`.NET Interactive` tool. Neither check makes live Azure, SharePoint or Web IQ calls.
+
+### C# console app (lab 12)
+
+Lab 12 retrieves through an existing APIM gateway using a token for the broker API.
+Complete lab 11 with the same prefix and retain its source/base definitions.
+Finish the broker/policy preparation, tenant consent and APIM identity's **Search Index Data Reader** grant first.
+No gateway, app registration, source or index is provisioned by this console app.
+See [lab 12 prerequisites and step overview](../../c-sharp-console-apps/12-foundry-iq-apim/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\12-foundry-iq-apim -- --help
+dotnet run --project .\c-sharp-console-apps\12-foundry-iq-apim -- run
+```
+
+Follow the README's **Run one step at a time** table to inspect the broker token,
+check the shared Web IQ source, create the APIM-specific knowledge base and retrieve independently.
+Source lookup and knowledge-base creation call Search directly and require your Search permissions.
+Retrieval calls APIM with the broker token; APIM supplies its own Search identity,
+the user's on-behalf-of context and Web IQ authentication.
+The architecture diagram explains why these identities and app registrations are separate.
+
+Azure CLI is pre-authorized on the broker's exposed scope; this does not make its Users and groups list
+an access allowlist when **Assignment required?** is **No**. Tenant policies still apply.
+SharePoint document access remains user-specific; Blob contents are not automatically per-user isolated.
+The knowledge base uses `medium` reasoning; live retrieval and model calls can incur charges.
+Cleanup requires explicit confirmation and preserves shared sources, indexes, broker and gateway.
+
+### Optional legacy C# notebook (lab 12)
+
+The same deprecation and kernel-compatibility warnings above apply. Open
+[12-foundry-iq-apim.ipynb](../../c-sharp-notebooks/12-foundry-iq-apim.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as its working directory so parent settings paths resolve.
+Run its inline helpers and numbered sections in order, without console-app imports.
+It follows Python lab 12's broker-token inspection, read-only shared source check, model/routing reuse,
+gateway retrieval and explained architecture. Token inspection does not replace APIM's JWT validation.
+Clear outputs before sharing.
+
+Offline checks use synthetic broker/Search responses and isolated C# kernels:
+
+```powershell
+dotnet run --project .\tests\c-sharp-apim\ApimTests.csproj
+$env:PYTHONPATH = '.\tests'
+.\.venv\Scripts\python.exe -m unittest test_csharp_apim_notebook.ApimConsoleTests test_csharp_apim_notebook.ApimNotebookTests -v
+```
+
+### C# console app (lab 13)
+
+Lab 13 writes a **C# hosted agent** with one local workshop-tip function, zips its source,
+creates an immutable version through Foundry remote build, waits and calls the hosted Responses API.
+It needs only an existing Foundry project/chat model, hosted .NET code deployment availability,
+Foundry Owner on the parent resource, .NET 10 and Azure CLI sign-in. No labs 11-12 prerequisite,
+Search, Web IQ key, Docker, Python, `azd` or app registration is needed.
+See [lab 13 prerequisites, step table and code explanation](../../c-sharp-console-apps/13-hosted-agent/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\13-hosted-agent -- --help
+dotnet run --project .\c-sharp-console-apps\13-hosted-agent -- run
+```
+
+Independent commands: `write-agent`, `package`, `deploy`, `status [version]`, `wait [version]`,
+`invoke [question]`, `invoke-tool`, and guarded `cleanup --confirm`.
+The launcher is dependency-free; the generated C# host uses pinned NuGet packages restored by Foundry.
+It writes `<prefix>-csharp-hosted-agent`, without overwriting Python13's local files.
+Both languages publish under `<prefix>-hosted-agent`; use different prefixes for independent Azure agents.
+After editing the generated tip, package/deploy/wait/invoke again; `write-agent` and `run` overwrite the edit.
+
+Your user authorizes deployment/invocation; the hosted identity authorizes model calls.
+An active build is not proof of runtime readiness or tool use: invoke successfully and inspect tool diagnostics.
+Hosted compute, model calls and sessions can incur charges. Cleanup never force-deletes active sessions,
+and preserves the project/model and local code.
+
+### Optional legacy C# notebook (lab 13)
+
+Open [13-hosted-agent.ipynb](../../c-sharp-notebooks/13-hosted-agent.ipynb) with the same C# kernel,
+using `c-sharp-notebooks` as its working directory. All helpers are inline; no console-project import
+or local SDK package installation is required by the notebook. Run the numbered source writing,
+packaging, deployment, fixed-version wait and invocation cells. Cleanup is explicitly opt-in.
+The README explains the generated Agent Framework host and each step's results and prerequisites.
+Clear outputs before sharing.
+
+Offline checks include synthetic HTTP/credentials, actual notebook cells and a local build of the generated C# host:
+
+```powershell
+dotnet run --project .\tests\c-sharp-hosted
+$env:PYTHONPATH = '.\tests'
+.\.venv\Scripts\python.exe -m unittest test_csharp_hosted_notebook.HostedConsoleTests test_csharp_hosted_notebook.HostedNotebookTests -v
+```
+
+Notebook execution checks additionally need the existing Python test environment and optional `.NET Interactive`;
+generated-agent build checks need access to the configured NuGet feed. Neither makes live Azure calls.

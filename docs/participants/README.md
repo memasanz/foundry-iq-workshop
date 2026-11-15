@@ -9,10 +9,10 @@
 | Code option | Available labs | How to explore |
 |---|---|---|
 | [Python notebooks](python.md) | 01-15 | Python/Jupyter cells; follow the Python setup guide. |
-| [C# console apps](c-sharp.md) | 01-06, 08-10 | Supported .NET 10 console apps; direct APIs, agents, toolboxes, Search indexing, remote SharePoint retrieval and Web IQ knowledge bases. |
-| [C# Polyglot Notebooks](c-sharp.md) | 01-06, 08-10 | C# cells in optional legacy Polyglot Notebooks (`.ipynb`); deprecated tooling. |
+| [C# console apps](c-sharp.md) | 01-06, 08-13 | Supported .NET 10 console apps; APIs, agents, toolboxes, Search indexing, SharePoint retrieval, direct/APIM knowledge bases and C# hosted agents. |
+| [C# Polyglot Notebooks](c-sharp.md) | 01-06, 08-13 | C# cells in optional legacy Polyglot Notebooks (`.ipynb`); deprecated tooling. |
 
-The tracks share the root `.env` and `.env.azure`. Lab 07 and labs 11-15 have not been translated to C# yet. No Python installation is required for the console apps.
+The tracks share the root `.env` and `.env.azure`. Lab 07 and labs 14-15 have not been translated to C# yet. No Python installation is required for the console apps.
 
 Create your local settings file without replacing an existing one:
 

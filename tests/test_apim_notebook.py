@@ -128,6 +128,7 @@ class ApimNotebookTests(unittest.TestCase):
                          ["alice01-kb-blob", "alice01-kb-sharepoint", "iq-workshop-webiq"])
         self.assertEqual(self.ns["source_kinds"]["alice01-kb-sharepoint"], "indexedSharePoint")
         self.assertEqual(body["retrievalInstructions"], "Use iq-workshop-webiq with contentFormat passage.")
+        self.assertEqual(body["retrievalReasoningEffort"], {"kind": "medium"})
 
     def test_web_reference_urls_are_displayed_from_source_data(self):
         url = "https://www.python.org/downloads/"

@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb), [lab 09 - Foundry IQ with Web IQ only](09-foundry-iq-webiq-only.ipynb), and [lab 10 - Foundry IQ with Web IQ + Blob](10-foundry-iq-webiq-blob.ipynb).
+Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb), [lab 09 - Foundry IQ with Web IQ only](09-foundry-iq-webiq-only.ipynb), [lab 10 - Foundry IQ with Web IQ + Blob](10-foundry-iq-webiq-blob.ipynb), [lab 11 - Foundry IQ knowledge base](11-foundry-iq-knowledge-base.ipynb), [lab 12 - Foundry IQ through APIM](12-foundry-iq-apim.ipynb), and [lab 13 - Hosted agent](13-hosted-agent.ipynb).
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -235,3 +235,65 @@ to establish which sources answered a particular request.
 Keep the stored Web IQ key out of logs and source control. Live retrieval, planning and synthesis can incur charges.
 Cleanup is explicitly opt-in and deletes only this lab's knowledge base and source definitions, not the CU index.
 Clear outputs before sharing.
+
+## 13. Open and run lab 11
+
+Lab 11 combines lab 05's Content Understanding Blob index (`<prefix>-cu-chunks`),
+lab 07's ACL-enabled SharePoint index (`<prefix>-nb7-index`) and live Web IQ.
+Complete those ingestion labs with the same prefix; lab 07 currently uses the Python track.
+Configure existing Search and Foundry models, a Web IQ profile key and Azure CLI sign-in.
+Your Search roles do not replace the required SharePoint document permissions.
+See [lab 11 settings, permissions and step instructions](../c-sharp-console-apps/11-foundry-iq-knowledge-base/README.md).
+
+Open [11-foundry-iq-knowledge-base.ipynb](11-foundry-iq-knowledge-base.ipynb) with the same C# kernel and working directory.
+Run its inline helpers and numbered sections in order, without console-app imports.
+It checks the existing indexes read-only, creates three sources and a knowledge base, then asks
+internal, web, SharePoint and mixed questions. No index creation, uploads or reingestion occurs.
+The knowledge base is separate from labs 09 and 10; labs 12 and 14 reuse its stable resource names.
+
+References display returned web URLs, PDF filenames/page ranges and SharePoint source links.
+Private Blob links still require authenticated access and viewer support for page fragments.
+The raw diagnostics explanation describes the last query's activity and references without another request.
+Treat diagnostic text as potentially sensitive. Live retrieval and model/Web IQ calls can incur charges.
+Cleanup is explicitly opt-in and preserves both indexes. Clear outputs before sharing.
+
+## 14. Open and run lab 12
+
+Complete lab 11 in either language with the same prefix and retain its knowledge sources.
+Lab 12 also requires an existing APIM gateway, configured broker app/policy, approved delegated consent
+and APIM's system-assigned identity granted **Search Index Data Reader** on Search.
+Those preparation steps are separate; this notebook does not configure the gateway or app registrations.
+See [lab 12 prerequisites and step instructions](../c-sharp-console-apps/12-foundry-iq-apim/README.md).
+
+Open [12-foundry-iq-apim.ipynb](12-foundry-iq-apim.ipynb) with the same C# kernel and working directory.
+Run its inline helpers and numbered sections in order, without console-app imports.
+It inspects a broker-audience token, reads the shared keyless Web IQ source and lab 11 definitions,
+creates `<prefix>-apim-kb` directly in Search, then retrieves through APIM.
+Setup needs your Search roles; gateway retrieval uses your broker token instead.
+
+The included architecture diagram explains the broker app, on-behalf-of user token,
+APIM's managed identity and separately held Web IQ key.
+Azure CLI is the pre-authorized client, not a user assignment or the broker itself.
+Enterprise-app assignment requirements and tenant policies can further restrict users.
+SharePoint document authorization remains separate.
+The knowledge base uses `medium` reasoning; live retrieval/model calls can incur charges.
+Cleanup is explicitly opt-in and deletes only this lab's knowledge base. Clear outputs before sharing.
+
+## 15. Open and run lab 13
+
+Open [13-hosted-agent.ipynb](13-hosted-agent.ipynb) with the C# kernel and `c-sharp-notebooks` working directory.
+Use an existing Foundry project/chat deployment with hosted .NET remote-build support,
+Foundry Owner on the parent resource and Azure CLI sign-in. No Search or earlier knowledge-base lab is required.
+See [lab 13 prerequisites and step explanations](../c-sharp-console-apps/13-hosted-agent/README.md).
+
+Run the inline helpers and numbered cells to write a C# Agent Framework host with a local function tool,
+package the three source files, upload a version, wait and call its Responses endpoint.
+The generated host's pinned NuGet packages are restored by Foundry; no Python, Docker or `azd` is required.
+Your user handles authoring/invocation, while the hosted identity handles model calls.
+An active version is not proof of runtime readiness or a function call; inspect successful invocation and tool output.
+
+Source goes to `<prefix>-csharp-hosted-agent`; Azure name remains `<prefix>-hosted-agent`.
+Python13 and C#13 under the same prefix create versions of that one agent, not separate agents.
+After editing the generated C# tip, package/deploy/wait/invoke again without rerunning source writing.
+Hosted compute, model calls and sessions can incur charges. Cleanup is opt-in and does not force-delete
+active sessions or remove shared resources/local files. Clear outputs before sharing.

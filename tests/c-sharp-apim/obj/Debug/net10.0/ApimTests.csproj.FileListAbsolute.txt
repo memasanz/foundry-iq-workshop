@@ -1,0 +1,15 @@
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\bin\Debug\net10.0\ApimTests.exe
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\bin\Debug\net10.0\ApimTests.deps.json
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\bin\Debug\net10.0\ApimTests.runtimeconfig.json
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\bin\Debug\net10.0\ApimTests.dll
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\bin\Debug\net10.0\ApimTests.pdb
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.AssemblyInfoInputs.cache
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.AssemblyInfo.cs
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.csproj.CoreCompileInputs.cache
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.sourcelink.json
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.dll
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\refint\ApimTests.dll
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.pdb
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ApimTests.genruntimeconfig.cache
+C:\Users\memasanz\repos\checkMe\foundry-iq-workshop\tests\c-sharp-apim\obj\Debug\net10.0\ref\ApimTests.dll

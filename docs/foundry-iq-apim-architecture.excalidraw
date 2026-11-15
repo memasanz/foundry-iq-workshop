@@ -1,0 +1,495 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "claude",
+  "elements": [
+    {
+      "type": "text",
+      "id": "title",
+      "x": 40,
+      "y": 20,
+      "width": 1730,
+      "height": 75.0,
+      "text": "Lab 12: APIM brokers the request, not the user's document permissions",
+      "fontSize": 30,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "x": 40,
+      "y": 85,
+      "width": 1730,
+      "height": 105.0,
+      "text": "Three different tokens: T1 = caller -> broker API; T2 = same user -> Search (OBO); T3 = APIM identity -> Search.\nRuntime retrieval flow below. Source lookup / knowledge-base creation still go directly from notebook to Search.",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "caller",
+      "x": 40,
+      "y": 215,
+      "width": 310,
+      "height": 340,
+      "strokeColor": "#0078D4",
+      "backgroundColor": "#CFE4FA",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "caller-text",
+      "x": 60,
+      "y": 235,
+      "width": 270,
+      "height": 332.5,
+      "text": "Python notebook / Azure CLI\n\nSigned-in workshop user\nRequests broker API token\nUses broker client ID\nNo broker secret or Web IQ\nkey in retrieval requests",
+      "fontSize": 19,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "apim",
+      "x": 580,
+      "y": 215,
+      "width": 480,
+      "height": 340,
+      "strokeColor": "#5C2D91",
+      "backgroundColor": "#E8DAEF",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "apim-text",
+      "x": 600,
+      "y": 235,
+      "width": 440,
+      "height": 332.5,
+      "text": "Existing APIM gateway: /iq\n\nValidate T1: tenant, audience, scope\nExchange T1 for T2 using broker app\nAdd Web IQ key from secret named value\nReplace Authorization with T3\nStrip elevated-read bypass header",
+      "fontSize": 19,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "search",
+      "x": 1380,
+      "y": 215,
+      "width": 380,
+      "height": 340,
+      "strokeColor": "#107C10",
+      "backgroundColor": "#DFF6DD",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "search-text",
+      "x": 1400,
+      "y": 235,
+      "width": 340,
+      "height": 332.5,
+      "text": "Azure AI Search\n\n<prefix>-apim-kb\nT3: authorize gateway\nT2: preserve user's context\nfor indexed SharePoint ACLs\nKey controls for Web IQ only",
+      "fontSize": 19,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "arrow",
+      "id": "caller-apim",
+      "x": 350,
+      "y": 390,
+      "width": 230,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          230,
+          0
+        ]
+      ],
+      "strokeColor": "#0078D4",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "text",
+      "id": "caller-apim-label",
+      "x": 365,
+      "y": 285,
+      "width": 210,
+      "height": 135.0,
+      "text": "2. Send T1\nAuthorization:\nBearer broker token",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "arrow",
+      "id": "apim-search",
+      "x": 1060,
+      "y": 390,
+      "width": 320,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          320,
+          0
+        ]
+      ],
+      "strokeColor": "#5C2D91",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "text",
+      "id": "apim-search-label",
+      "x": 1075,
+      "y": 260,
+      "width": 300,
+      "height": 135.0,
+      "text": "4. Authorization = T3\nUser-context header = T2\nWeb IQ per-source key headers",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "entra",
+      "x": 580,
+      "y": 775,
+      "width": 480,
+      "height": 260,
+      "strokeColor": "#5C2D91",
+      "backgroundColor": "#E8DAEF",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "entra-text",
+      "x": 600,
+      "y": 795,
+      "width": 440,
+      "height": 285.0,
+      "text": "Microsoft Entra ID\n\nIssues T1 to Azure CLI for broker API\nOBO: T1 + broker ID + broker secret\n   -> T2 for Search, same user\nAPIM managed identity obtains T3",
+      "fontSize": 19,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "arrow",
+      "id": "user-signin",
+      "x": 195,
+      "y": 555,
+      "width": 385,
+      "height": 350,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          350
+        ],
+        [
+          385,
+          350
+        ]
+      ],
+      "strokeColor": "#0078D4",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "text",
+      "id": "user-signin-label",
+      "x": 220,
+      "y": 780,
+      "width": 350,
+      "height": 135.0,
+      "text": "1. Sign in; acquire T1\napi://<broker-id>/.default\nExposed user_impersonation scope",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "arrow",
+      "id": "obo-request",
+      "x": 800,
+      "y": 555,
+      "width": 0,
+      "height": 220,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          220
+        ]
+      ],
+      "strokeColor": "#5C2D91",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "text",
+      "id": "obo-label",
+      "x": 825,
+      "y": 600,
+      "width": 300,
+      "height": 135.0,
+      "text": "3. OBO exchange\nBroker authenticates\nwith its APIM-held secret",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "targets",
+      "x": 1380,
+      "y": 775,
+      "width": 380,
+      "height": 260,
+      "strokeColor": "#107C10",
+      "backgroundColor": "#DFF6DD",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "targets-text",
+      "x": 1400,
+      "y": 795,
+      "width": 340,
+      "height": 270.0,
+      "text": "5. Retrieve + synthesize\n\nExisting CU Blob index (05)\nExisting SharePoint ACL index (07)\nWeb IQ MCP: public web\nFoundry models via Search identity",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "arrow",
+      "id": "search-targets",
+      "x": 1730,
+      "y": 555,
+      "width": 0,
+      "height": 220,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          220
+        ]
+      ],
+      "strokeColor": "#107C10",
+      "strokeWidth": 3,
+      "endArrowhead": "arrow"
+    },
+    {
+      "type": "text",
+      "id": "targets-label",
+      "x": 1395,
+      "y": 610,
+      "width": 350,
+      "height": 135.0,
+      "text": "No new ingestion in lab 12\nNo live SharePoint site call\nfor the indexed source",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "text",
+      "id": "return-note",
+      "x": 40,
+      "y": 1085,
+      "width": 1730,
+      "height": 105.0,
+      "text": "Answer + references return through APIM to the notebook. The stored Web IQ key is not a user's document credential.\nRetrieval needs a broker token; direct source/KB setup still needs the user's Search RBAC. Shared services are not per-user isolation.",
+      "fontSize": 21,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "text",
+      "id": "identities-heading",
+      "x": 40,
+      "y": 1190,
+      "width": 1730,
+      "height": 67.5,
+      "text": "Which identity / app registration does what?",
+      "fontSize": 27,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "broker-role",
+      "x": 40,
+      "y": 1255,
+      "width": 550,
+      "height": 300,
+      "strokeColor": "#5C2D91",
+      "backgroundColor": "#E8DAEF",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "broker-role-text",
+      "x": 60,
+      "y": 1275,
+      "width": 510,
+      "height": 270.0,
+      "text": "Broker app registration (lab 12)\nExpose user_impersonation to Azure CLI\nRequest delegated Search permission\nAdmin consent enables downstream OBO\nAPIM stores broker-client-secret\nNOT the SharePoint ingestion app",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "apim-role",
+      "x": 625,
+      "y": 1255,
+      "width": 550,
+      "height": 300,
+      "strokeColor": "#0078D4",
+      "backgroundColor": "#CFE4FA",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "apim-role-text",
+      "x": 645,
+      "y": 1275,
+      "width": 510,
+      "height": 270.0,
+      "text": "APIM system-assigned identity\nGets T3 without a broker client secret\nNeeds Search Index Data Reader\nat the Search service scope\nThis does not replace T2 user context\nor grant the user SharePoint access",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    },
+    {
+      "type": "rectangle",
+      "id": "ingestion-role",
+      "x": 1210,
+      "y": 1255,
+      "width": 550,
+      "height": 300,
+      "strokeColor": "#495057",
+      "backgroundColor": "#F3F2F1",
+      "fillStyle": "solid",
+      "strokeWidth": 2,
+      "roundness": {
+        "type": 3
+      }
+    },
+    {
+      "type": "text",
+      "id": "ingestion-role-text",
+      "x": 1230,
+      "y": 1275,
+      "width": 510,
+      "height": 270.0,
+      "text": "SharePoint ingestion app (lab 07)\nTrusts Search managed identity (federation)\nApproved app permissions + site grant\nPopulate the indexed content / ACLs\nNo ingestion-app secret for this path\nNOT used for APIM's runtime OBO",
+      "fontSize": 18,
+      "fontFamily": 2,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "textAlign": "left",
+      "verticalAlign": "top"
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  },
+  "files": {}
+}

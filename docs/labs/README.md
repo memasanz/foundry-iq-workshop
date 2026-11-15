@@ -42,6 +42,15 @@ for a standalone Web IQ-only knowledge base, with no indexes or APIM.
 Lab 10 has a [supported C# console app](../../c-sharp-console-apps/10-foundry-iq-webiq-blob/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/10-foundry-iq-webiq-blob.ipynb)
 for combining Web IQ with lab 05's existing Content Understanding Blob index.
+Lab 11 has a [supported C# console app](../../c-sharp-console-apps/11-foundry-iq-knowledge-base/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/11-foundry-iq-knowledge-base.ipynb)
+for combining the Content Understanding Blob index, indexed SharePoint and Web IQ with readable source references.
+Lab 12 has a [supported C# console app](../../c-sharp-console-apps/12-foundry-iq-apim/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/12-foundry-iq-apim.ipynb)
+for broker-token authentication and retrieval through the existing APIM gateway.
+Lab 13 has a [supported C# console app](../../c-sharp-console-apps/13-hosted-agent/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/13-hosted-agent.ipynb)
+for a real C# function-tool agent deployed through remote build, without Docker or `azd`.
 
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|
@@ -52,7 +61,7 @@ for combining Web IQ with lab 05's existing Content Understanding Blob index.
 | [08 - SharePoint remote](../../python-notebooks/08-sharepoint-remote.ipynb) | 20-30 min | Retrieve from SharePoint without copying content into an index. Requires Microsoft 365 Copilot licensing or enabled Retrieval API billing. |
 | [09 - Foundry IQ with Web IQ only](../../python-notebooks/09-foundry-iq-webiq-only.ipynb) | 15-25 min | Create a standalone Web IQ-only knowledge base, without APIM or indexes. Inspect MCP activity, URLs and passages; compare answer synthesis with extractive retrieval. |
 | [10 - Foundry IQ with Web IQ + Blob](../../python-notebooks/10-foundry-iq-webiq-blob.ipynb) | 30-40 min | Combine live Web IQ with the Content Understanding Blob index from 05 (`<prefix>-cu-chunks`). Compare web, document and mixed evidence without SharePoint or reindexing. |
-| [11 - Foundry IQ knowledge base](../../python-notebooks/11-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine the existing Blob and indexed SharePoint indexes with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
+| [11 - Foundry IQ knowledge base](../../python-notebooks/11-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine lab 05's Content Understanding Blob index and lab 07's indexed SharePoint with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
 | [12 - Foundry IQ through APIM](../../python-notebooks/12-foundry-iq-apim.ipynb) | 30-40 min | Build on notebook 11 using an existing API Management gateway that validates callers and protects the Web IQ key. |
 | [13 - Hosted agent](../../python-notebooks/13-hosted-agent.ipynb) | 20-30 min | Deploy a small code-based agent to Foundry, without Docker. Needs Foundry and the chat model, not notebooks 11-12. |
 | [14 - Hosted agent + Foundry IQ toolbox](../../python-notebooks/14-foundry-iq-toolbox-agent.ipynb) | 30-40 min | Combine the patterns from 11 and 13. Uses Blob content, a shared toolbox connection and a per-agent Search role. |

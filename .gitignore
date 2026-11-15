@@ -9,6 +9,7 @@ __pycache__/
 *.executed.ipynb
 *-hosted-agent/
 *-hosted-agent-iq/
+!c-sharp-console-apps/13-hosted-agent/
 infra/*.json
 attendees.txt
 c-sharp-console-apps/**/bin/
@@ -21,3 +22,5 @@ tests/c-sharp-toolbox/**/bin/
 tests/c-sharp-toolbox/**/obj/
 tests/c-sharp-search/**/bin/
 tests/c-sharp-search/**/obj/
+tests/c-sharp-hosted/**/bin/
+tests/c-sharp-hosted/**/obj/
