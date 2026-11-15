@@ -24,3 +24,5 @@ tests/c-sharp-search/**/bin/
 tests/c-sharp-search/**/obj/
 tests/c-sharp-hosted/**/bin/
 tests/c-sharp-hosted/**/obj/
+tests/c-sharp-iq-toolbox/**/bin/
+tests/c-sharp-iq-toolbox/**/obj/

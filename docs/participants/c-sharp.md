@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01-06 and 08-13. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-06 and 08-14. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -499,3 +499,59 @@ $env:PYTHONPATH = '.\tests'
 
 Notebook execution checks additionally need the existing Python test environment and optional `.NET Interactive`;
 generated-agent build checks need access to the configured NuGet feed. Neither makes live Azure calls.
+
+### C# console app (lab 14)
+
+Lab 14 connects a **C# hosted agent to a Foundry IQ toolbox**, backed by lab 11's existing Blob source.
+It creates a separate Blob-only KB, an `AgenticIdentityToken` Search connection, an immutable toolbox
+version/default and a hosted version; then grants the deployed agent principal Search access before questions.
+Use lab 11's prefix/resources and an existing .NET remote-build-capable Foundry project/model.
+Lab 12, Python, Docker, `azd`, Web IQ keys, a broker and app registrations are not prerequisites.
+See [lab 14 README, architecture, permissions and step table](../../c-sharp-console-apps/14-foundry-iq-toolbox-agent/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\14-foundry-iq-toolbox-agent -- --help
+dotnet run --project .\c-sharp-console-apps\14-foundry-iq-toolbox-agent -- run
+```
+
+`run` writes resources/source and makes two model-backed calls; HTTP 403 on the Search grant prints
+an administrator handoff and exits 3 **before questions**. After the administrator grants access, use `invoke`,
+not another full deployment. Role propagation may take time; questions are never retried automatically.
+
+Independent steps: `verify-sources`, `knowledge-base`, `connection`, `toolbox`, `check-toolbox`,
+`write-agent`, `package`, `deploy`, `status [version]`, `wait [version]`, `grant-search [version]`,
+`invoke [question] [--diagnostics]`, `invoke-unknown [--diagnostics]` and `cleanup --confirm`.
+Metadata/setup commands do not implicitly ask questions or repair earlier missing resources.
+Generated source goes to `<prefix>-csharp-hosted-agent-iq`; packaging preserves edits.
+`write-agent`/`run` overwrite source; both language tracks publish under the same prefixed Azure names.
+
+The generated host follows the sample's `AsAIAgent` + `AddFoundryToolboxes` + Responses hosting pattern.
+There is no local retrieval function or Search URL in agent code. Your user authors/invokes;
+the connection calls Search as **this deployed agent's own principal**, not your user/project identity.
+It needs Search Index Data Reader on Search; assigning that role requires separate role-assignment permission.
+Retain Search/model service-identity grants from earlier labs. The architecture explains the two model layers.
+
+Inspect evidence, tool errors and citations; the unknown-answer question is not guaranteed to be refused.
+Hosted compute/sessions, Search and both model layers can incur charges.
+Guarded cleanup removes only this lab's four objects, preserves lab 11/index/local files and never forces sessions.
+
+### Optional legacy C# notebook (lab 14)
+
+Open [14-foundry-iq-toolbox-agent.ipynb](../../c-sharp-notebooks/14-foundry-iq-toolbox-agent.ipynb)
+with the C# kernel and `c-sharp-notebooks` working directory.
+All BCL helpers are inline; no console import or local SDK packages are required by the notebook.
+Run the explained, separate KB/connection/toolbox/source/package/deploy/wait/grant/question cells.
+A denied grant stops execute-all before model calls; after the administrator confirms access,
+continue with invocation. Cleanup defaults to false. Clear outputs before sharing.
+
+Offline tests compile the actual generated host, compare current Python14 payloads/role UUIDs,
+and execute the real inline cells against synthetic HTTP and credentials:
+
+```powershell
+dotnet run --project .\tests\c-sharp-iq-toolbox
+$env:PYTHONPATH = '.\tests'
+.\.venv\Scripts\python.exe -m unittest test_csharp_iq_toolbox_notebook.IqToolboxConsoleTests test_csharp_iq_toolbox_notebook.IqToolboxNotebookTests -v
+```
+
+Kernel checks additionally need the existing Python test environment and optional `.NET Interactive`;
+the generated-host build needs the configured NuGet feed. These checks make no live Azure calls.

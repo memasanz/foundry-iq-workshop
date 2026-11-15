@@ -51,6 +51,9 @@ for broker-token authentication and retrieval through the existing APIM gateway.
 Lab 13 has a [supported C# console app](../../c-sharp-console-apps/13-hosted-agent/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/13-hosted-agent.ipynb)
 for a real C# function-tool agent deployed through remote build, without Docker or `azd`.
+Lab 14 has a [supported C# console app](../../c-sharp-console-apps/14-foundry-iq-toolbox-agent/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/14-foundry-iq-toolbox-agent.ipynb)
+for a C# hosted agent with a Blob-only Foundry IQ toolbox and its own Search identity/grant.
 
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|

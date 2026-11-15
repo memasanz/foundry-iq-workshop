@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb), [lab 09 - Foundry IQ with Web IQ only](09-foundry-iq-webiq-only.ipynb), [lab 10 - Foundry IQ with Web IQ + Blob](10-foundry-iq-webiq-blob.ipynb), [lab 11 - Foundry IQ knowledge base](11-foundry-iq-knowledge-base.ipynb), [lab 12 - Foundry IQ through APIM](12-foundry-iq-apim.ipynb), and [lab 13 - Hosted agent](13-hosted-agent.ipynb).
+Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb), [lab 09 - Foundry IQ with Web IQ only](09-foundry-iq-webiq-only.ipynb), [lab 10 - Foundry IQ with Web IQ + Blob](10-foundry-iq-webiq-blob.ipynb), [lab 11 - Foundry IQ knowledge base](11-foundry-iq-knowledge-base.ipynb), [lab 12 - Foundry IQ through APIM](12-foundry-iq-apim.ipynb), [lab 13 - Hosted agent](13-hosted-agent.ipynb), and [lab 14 - Hosted agent + Foundry IQ toolbox](14-foundry-iq-toolbox-agent.ipynb).
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -297,3 +297,27 @@ Python13 and C#13 under the same prefix create versions of that one agent, not s
 After editing the generated C# tip, package/deploy/wait/invoke again without rerunning source writing.
 Hosted compute, model calls and sessions can incur charges. Cleanup is opt-in and does not force-delete
 active sessions or remove shared resources/local files. Clear outputs before sharing.
+
+## 16. Open and run lab 14
+
+Open [14-foundry-iq-toolbox-agent.ipynb](14-foundry-iq-toolbox-agent.ipynb) with the same C# kernel and
+`c-sharp-notebooks` working directory. Keep lab 11's Blob source/KB with the same prefix and confirm
+the .NET remote-build path from lab 13 works. Lab 12 is not required.
+See [lab 14 prerequisites, architecture and step explanations](../c-sharp-console-apps/14-foundry-iq-toolbox-agent/README.md).
+
+Run inline setup, Blob-only KB, agentic connection, toolbox publication, source writing, packaging,
+deployment, fixed-version wait, per-agent Search grant and the two question cells.
+The shared architecture diagram explains caller, agent and Search identities; the notebook maps its
+Python labels to C# `AsAIAgent`, `AddFoundryToolboxes` and the Responses hosting layer.
+The hosted agent uses `TOOLBOX_NAME`, not a Search URL, KB name, key or local retrieval function.
+
+Source goes to `<prefix>-csharp-hosted-agent-iq`; Azure names match Python14.
+Your user authors/invokes, but the `AgenticIdentityToken` connection calls Search as the deployed
+agent's own principal. It needs Search Index Data Reader on Search. Role assignment needs separate
+administrator rights: HTTP 403 prints the handoff and stops execute-all before questions.
+After the administrator confirms the grant, continue with invocation; do not redeploy or repeatedly ask questions.
+
+Inspect successful retrieval output/citations and the unknown-answer test; active does not prove runtime
+readiness or grounding. Hosted compute, Search and both model layers can incur charges.
+Cleanup is opt-in, preflights/deletes only the four prefixed lab objects and never forces active sessions.
+Lab 11's source/base/index and local code are preserved. Clear outputs before sharing.
