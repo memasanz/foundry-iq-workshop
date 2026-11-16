@@ -33,6 +33,9 @@ for the Content Understanding pipeline.
 Lab 06 has a [supported C# console app](../../c-sharp-console-apps/06-push-chunks-vectors/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/06-push-chunks-vectors.ipynb)
 for application-owned chunking, embedding and push ingestion.
+Lab 07 has a [supported C# console app](../../c-sharp-console-apps/07-sharepoint-indexed/README.md)
+and an [optional legacy C# notebook](../../c-sharp-notebooks/07-sharepoint-indexed.ipynb)
+for secretless SharePoint ingestion, semantic text sections and Entra ACL-preserving projections.
 Lab 08 has a [supported C# console app](../../c-sharp-console-apps/08-sharepoint-remote/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/08-sharepoint-remote.ipynb)
 for user-authorized remote SharePoint retrieval without indexing.

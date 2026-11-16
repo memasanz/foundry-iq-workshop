@@ -6,7 +6,7 @@ Follow the facilitator setup once, then use the participant instructions.
 You need your own eligible Azure subscription and access to the services you choose.
 
 1. **[Choose your labs](../labs/README.md).** Start with lab 01 for direct Web IQ APIs,
-   or select a track before setting up resources. Python covers labs 01-15; C# currently covers labs 01-06 and 08-14.
+   or select a track before setting up resources. Python covers labs 01-15; C# currently covers labs 01-14.
 2. **[Prepare your environment](../facilitators/README.md).** Complete only the setup required
    by those labs. If you already have a working Web IQ profile/API key, lab 01 needs no
    additional Azure deployment or sign-in. For your own new resources, follow the

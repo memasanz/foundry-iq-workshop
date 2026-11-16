@@ -1,7 +1,7 @@
 # C# Polyglot Notebooks
 
 Run C# code in notebook cells alongside the workshop's explanations and API response descriptions.
-Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb), [lab 09 - Foundry IQ with Web IQ only](09-foundry-iq-webiq-only.ipynb), [lab 10 - Foundry IQ with Web IQ + Blob](10-foundry-iq-webiq-blob.ipynb), [lab 11 - Foundry IQ knowledge base](11-foundry-iq-knowledge-base.ipynb), [lab 12 - Foundry IQ through APIM](12-foundry-iq-apim.ipynb), [lab 13 - Hosted agent](13-hosted-agent.ipynb), and [lab 14 - Hosted agent + Foundry IQ toolbox](14-foundry-iq-toolbox-agent.ipynb).
+Currently available: [lab 01 - Web IQ APIs](01-web-iq-apis.ipynb), [lab 02 - Foundry agent + Web IQ](02-foundry-web-iq-agent.ipynb), [lab 03 - Foundry agent + Web IQ toolbox](03-foundry-web-iq-toolbox.ipynb), [lab 04 - Blob indexer and skills](04-blob-indexer-skills.ipynb), [lab 05 - Blob + Content Understanding](05-blob-content-understanding.ipynb), [lab 06 - Chunk, embed and push](06-push-chunks-vectors.ipynb), [lab 07 - SharePoint indexed](07-sharepoint-indexed.ipynb), [lab 08 - SharePoint remote](08-sharepoint-remote.ipynb), [lab 09 - Foundry IQ with Web IQ only](09-foundry-iq-webiq-only.ipynb), [lab 10 - Foundry IQ with Web IQ + Blob](10-foundry-iq-webiq-blob.ipynb), [lab 11 - Foundry IQ knowledge base](11-foundry-iq-knowledge-base.ipynb), [lab 12 - Foundry IQ through APIM](12-foundry-iq-apim.ipynb), [lab 13 - Hosted agent](13-hosted-agent.ipynb), and [lab 14 - Hosted agent + Foundry IQ toolbox](14-foundry-iq-toolbox-agent.ipynb).
 The notebooks use the same `.ipynb` file format as the Python track, but run with the .NET Interactive C# kernel.
 Python is not required when using the Polyglot Notebooks extension in VS Code.
 
@@ -179,7 +179,33 @@ Changing or removing chunks can leave old keys behind, so follow the notebook's 
 Optional cleanup is disabled by default and targets only the prefixed push index.
 Live embeddings and semantic ranking can incur charges; use synthetic data and clear outputs before sharing.
 
-## 10. Open and run lab 08
+## 10. Open and run lab 07
+
+Open [07-sharepoint-indexed.ipynb](07-sharepoint-indexed.ipynb) with the C# kernel and
+`c-sharp-notebooks` working directory. It mirrors Python07's visible REST payloads/calls:
+SharePoint data source, ACL-aware index, Content Understanding/embedding skillset, indexer,
+monitoring and user-filtered query. Inline settings/transport helpers need no console imports or SDK packages.
+See [lab 07 permissions, federation, step instructions and two-user exercise](../c-sharp-console-apps/07-sharepoint-indexed/README.md).
+
+Complete the existing app setup, admin consent, selected-site Read grant and Search managed-identity federation first.
+The two connection IDs are **client/application IDs**, not principal/object IDs. Search needs
+Cognitive Services User on Foundry; setup users need Search Service Contributor; query users need
+Search Index Data Reader plus source access. Use a non-sensitive test site and preview enrollment.
+Graph Files.Read.All remains tenant-wide despite Sites.Selected; no extra app or secret is created.
+
+`INDEXED_SETUP_CONFIRMED = true` matches Python07's reviewed-setup acknowledgment, not a permission test;
+set it false if setup is incomplete. Initial indexer creation starts billable ingestion. The monitor
+keeps the previous start time only in kernel memory and does not rerun on failure/timeout.
+`RUN_AGAIN`, `RESYNC_PERMISSIONS` and `CLEAN_UP` default to false.
+
+Each projected chunk carries Entra user/group ACLs and source/page metadata.
+Queries pass the signed-in user's Search token for source authorization, with no elevated-read header.
+Test two non-admin member users and directly assigned Entra groups; native SharePoint groups/guest ACLs
+are not expanded by this lab. Permission changes may require an explicit inherited-ACL resync and run.
+Cleanup targets only the four named Search objects, never the shared app/site grants.
+Analysis/embeddings and Search incur charges. Clear document text/URLs from outputs before sharing.
+
+## 11. Open and run lab 08
 
 Lab 08 is independent of the indexed SharePoint lab 07. Configure the existing Search endpoint,
 tenant ID, test SharePoint site URL and `WORKSHOP_PREFIX` in the root settings files, then sign in with Azure CLI.
@@ -199,7 +225,7 @@ Test allowed and denied documents separately. Gateway failures print correlation
 Live Retrieval API calls are subject to licensing, quota and billing; optional cleanup is off by default.
 Clear outputs before sharing.
 
-## 11. Open and run lab 09
+## 12. Open and run lab 09
 
 Lab 09 creates a standalone Web IQ-only knowledge base using existing Search and Foundry model resources.
 It needs a Web IQ profile API key, `WORKSHOP_PREFIX`, root settings files and Azure CLI sign-in.
@@ -217,7 +243,7 @@ Keep the Web IQ key out of outputs and source control. Live retrieval and synthe
 Cleanup is explicitly opt-in and targets only this lab's named knowledge base and source.
 Clear outputs before sharing.
 
-## 12. Open and run lab 10
+## 13. Open and run lab 10
 
 Lab 10 combines Web IQ with lab 05's existing Content Understanding Blob index, `<prefix>-cu-chunks`.
 Complete lab 05 using either language track with the same `WORKSHOP_PREFIX`.
@@ -236,7 +262,7 @@ Keep the stored Web IQ key out of logs and source control. Live retrieval, plann
 Cleanup is explicitly opt-in and deletes only this lab's knowledge base and source definitions, not the CU index.
 Clear outputs before sharing.
 
-## 13. Open and run lab 11
+## 14. Open and run lab 11
 
 Lab 11 combines lab 05's Content Understanding Blob index (`<prefix>-cu-chunks`),
 lab 07's ACL-enabled SharePoint index (`<prefix>-nb7-index`) and live Web IQ.
@@ -257,7 +283,7 @@ The raw diagnostics explanation describes the last query's activity and referenc
 Treat diagnostic text as potentially sensitive. Live retrieval and model/Web IQ calls can incur charges.
 Cleanup is explicitly opt-in and preserves both indexes. Clear outputs before sharing.
 
-## 14. Open and run lab 12
+## 15. Open and run lab 12
 
 Complete lab 11 in either language with the same prefix and retain its knowledge sources.
 Lab 12 also requires an existing APIM gateway, configured broker app/policy, approved delegated consent
@@ -279,7 +305,7 @@ SharePoint document authorization remains separate.
 The knowledge base uses `medium` reasoning; live retrieval/model calls can incur charges.
 Cleanup is explicitly opt-in and deletes only this lab's knowledge base. Clear outputs before sharing.
 
-## 15. Open and run lab 13
+## 16. Open and run lab 13
 
 Open [13-hosted-agent.ipynb](13-hosted-agent.ipynb) with the C# kernel and `c-sharp-notebooks` working directory.
 Use an existing Foundry project/chat deployment with hosted .NET remote-build support,
@@ -298,7 +324,7 @@ After editing the generated C# tip, package/deploy/wait/invoke again without rer
 Hosted compute, model calls and sessions can incur charges. Cleanup is opt-in and does not force-delete
 active sessions or remove shared resources/local files. Clear outputs before sharing.
 
-## 16. Open and run lab 14
+## 17. Open and run lab 14
 
 Open [14-foundry-iq-toolbox-agent.ipynb](14-foundry-iq-toolbox-agent.ipynb) with the same C# kernel and
 `c-sharp-notebooks` working directory. Keep lab 11's Blob source/KB with the same prefix and confirm

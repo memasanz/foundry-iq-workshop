@@ -18,7 +18,8 @@ This lab never modifies the independent 09/10 definitions.
 ## Existing resources, permissions and private access
 
 Complete [05 — Content Understanding](../05-blob-content-understanding/README.md)
-and [07 — indexed SharePoint (Python)](../../python-notebooks/07-sharepoint-indexed.ipynb)
+and [07 — indexed SharePoint](../07-sharepoint-indexed/README.md)
+(or its [Python notebook](../../python-notebooks/07-sharepoint-indexed.ipynb))
 using the same Search service and prefix first:
 
 | Existing index | Required schema |

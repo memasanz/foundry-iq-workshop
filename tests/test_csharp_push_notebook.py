@@ -354,12 +354,17 @@ if (handler.Requests.Single().Method != "DELETE" ||
         bodies, _ = python_payloads()
         for cell, expected in zip(("query-vector", "query-hybrid", "query-semantic", "query-semantic-hybrid"),
                                   bodies[-4:]):
-            self.execute(cells={cell}, question="What receipts do I need to claim travel expenses, and when must I submit them?",
-                         checks=f"""
+            executed = self.execute(cells={cell}, question="What receipts do I need to claim travel expenses, and when must I submit them?",
+                                    checks=f"""
 if (handler.Requests.Count != 1 || handler.Requests[0].Method != "POST" ||
     !JsonNode.DeepEquals(handler.Requests[0].Body, JsonNode.Parse({json.dumps(json.dumps(expected))})))
     throw new Exception("Hidden actions or Python06 query payload differs");
 """)
+            query = next(c for c in executed.cells if c.id == cell)
+            printed = "".join(output.get("text", output.get("data", {}).get("text/plain", ""))
+                              for output in query.outputs)
+            self.assertIn('\n  "value": [', printed, f"{cell} should print indented results")
+            self.assertEqual(json.loads(printed), {"value": [{}]})
 
 
 if __name__ == "__main__":

@@ -26,3 +26,5 @@ tests/c-sharp-hosted/**/bin/
 tests/c-sharp-hosted/**/obj/
 tests/c-sharp-iq-toolbox/**/bin/
 tests/c-sharp-iq-toolbox/**/obj/
+tests/c-sharp-sharepoint-indexed/**/bin/
+tests/c-sharp-sharepoint-indexed/**/obj/

@@ -2,7 +2,7 @@
 
 [Participant guide](README.md) | [Choose your labs](../labs/README.md)
 
-C# equivalents currently cover labs 01-06 and 08-14. Choose the supported console apps or optional legacy Polyglot Notebooks.
+C# equivalents currently cover labs 01-14. Choose the supported console apps or optional legacy Polyglot Notebooks.
 Both use the root settings files and the same public research examples.
 
 ### C# console app (lab 01)
@@ -243,6 +243,58 @@ dotnet run --project .\tests\c-sharp-push
 
 The notebook check additionally needs the existing Python test environment and optional legacy
 `.NET Interactive` tool. Neither check makes live Azure calls.
+
+### C# console app (lab 07)
+
+Lab 07 ports Python07's **REST SharePoint indexing pipeline**: secretless source, Entra ACL-aware
+text/vector index, Content Understanding semantic sections, embeddings and per-chunk ACL projections.
+It uses the existing ingestion app and Search identity federation; **no new app, secret, consent, Graph site
+grant or source upload is performed**. Use a non-sensitive dedicated site, preview enrollment and the existing
+Foundry embedding deployment. See [lab 07 README and identity/permission tables](../../c-sharp-console-apps/07-sharepoint-indexed/README.md).
+
+```powershell
+dotnet run --project .\c-sharp-console-apps\07-sharepoint-indexed -- --help
+# After the administrator setup is complete and reviewed:
+dotnet run --project .\c-sharp-console-apps\07-sharepoint-indexed -- run --setup-confirmed
+```
+
+Independent commands: `configuration`, `data-source --setup-confirmed`, `index`, `skillset`,
+`indexer --setup-confirmed`, `status`, `wait`, `query [question]`, `run-indexer`,
+`resync-permissions --confirm` and `cleanup --confirm`.
+Setup confirmation acknowledges review, not a federation/site-access test. Indexer creation starts
+billable extraction/embeddings; the monitor never requests another run automatically.
+The console's ignored checkpoint contains only endpoint/indexer/prior-run metadata.
+
+Setup users need Search Service Contributor. Query users need Search Index Data Reader and actual
+document access. Search's system identity needs Cognitive Services User on Foundry and federation
+to the ingestion app. The connection uses the app **client ID** and Search identity **client ID**,
+not their object/principal IDs. App setup, consent and selected-site grants require separately authorized administrators.
+Graph Files.Read.All is tenant-wide; Sites.Selected does not narrow that independent grant.
+
+Queries use the delegated CLI user's Search token for source authorization, never elevated-read access.
+Test two non-admin member accounts and directly assigned Entra groups; no native SharePoint-group
+expansion or guest ACL support is claimed. Inherited ACL changes need explicit resync/run.
+Cleanup removes only the four matching Search objects, preserving the app, site grants and source documents.
+
+### Optional legacy C# notebook (lab 07)
+
+Open [07-sharepoint-indexed.ipynb](../../c-sharp-notebooks/07-sharepoint-indexed.ipynb) with the C# kernel,
+using `c-sharp-notebooks` as the working directory.
+The cells contain the same visible JSON/REST call sequence as Python07, rather than invoking console workflows.
+Inline BCL settings/transport require no SDK packages or imports from another lab.
+`INDEXED_SETUP_CONFIRMED = true` matches Python07; review administrator setup before ingestion.
+Rerun, permissions resync and cleanup remain opt-in; previous-run state is only in kernel memory.
+Pretty-printing keeps responses readable. Outputs can contain private document text/URLs; clear before sharing.
+
+```powershell
+dotnet run --project .\tests\c-sharp-sharepoint-indexed
+$env:PYTHONPATH = '.\tests'
+.\.venv\Scripts\python.exe -m unittest test_csharp_sharepoint_indexed_notebook.SharePointIndexedConsoleTests test_csharp_sharepoint_indexed_notebook.SharePointIndexedNotebookTests -v
+```
+
+Offline tests compare current Python07 payloads and execute actual C# cells with synthetic HTTP/user tokens.
+Kernel checks additionally need the existing Python test environment and optional `.NET Interactive`.
+They make no live Azure/Graph/SharePoint call and do not replace the real two-user permission experiment.
 
 ### C# console app (lab 08)
 
