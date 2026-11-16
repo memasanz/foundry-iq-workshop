@@ -42,8 +42,6 @@ def python_payloads(shared_base):
         "knowledge_base_mcp_url": "https://workshop.search.windows.net/knowledgebases/alice01-toolbox-kb/mcp?api-version=2026-08-01-preview",
         "connection_id": PROJECT_ID + "/connections/alice01-iq-search-mcp",
         "model_name": "workshop-chat", "toolbox_name": "alice01-iq-toolbox",
-        "search_resource_id": SEARCH_ID, "principal_id": "22222222-2222-2222-2222-222222222222",
-        "search_index_data_reader": "1407120a-92aa-4202-b7e9-c0e197c71c8f",
         "CodeConfiguration": CodeConfiguration, "HostedAgentDefinition": HostedAgentDefinition,
         "ProtocolVersionRecord": ProtocolVersionRecord, "MCPToolboxTool": MCPToolboxTool,
     }
@@ -64,7 +62,6 @@ def python_payloads(shared_base):
     definition = evaluate(assignment("deploy", "definition")).as_dict()
     definition["code_configuration"]["runtime"] = "dotnet_10"
     definition["code_configuration"]["entry_point"] = ["dotnet", "WorkshopIqAgent.dll"]
-    role_id = context["search_index_data_reader"]
     return {
         "knowledgeBase": evaluate(assignment("create-knowledge-base", "knowledge_base")),
         "connection": evaluate(keyword("create-toolbox", "put", "json")),
@@ -77,9 +74,6 @@ def python_payloads(shared_base):
             "description": evaluate(keyword("deploy", "create_version_from_code", "description")),
             "metadata": evaluate(keyword("deploy", "create_version_from_code", "metadata")),
         },
-        "role": evaluate(keyword("grant-search-access", "put", "json")),
-        "assignmentName": str(uuid.uuid5(uuid.NAMESPACE_URL,
-                                       f"{SEARCH_ID}/{context['principal_id']}/{role_id}")),
     }
 
 
@@ -97,7 +91,7 @@ class IqToolboxConsoleTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, path)
         return path
 
-    def test_console_harness_matches_current_python_payloads_and_role_uuid(self):
+    def test_console_harness_matches_current_python_payloads(self):
         wire = self.fixture() / "wire.json"
         result = subprocess.run(["dotnet", "run", "--project", str(HARNESS), "--", "--wire", str(wire)],
                                 cwd=ROOT, capture_output=True, text=True, timeout=120)
@@ -105,6 +99,7 @@ class IqToolboxConsoleTests(unittest.TestCase):
         actual = json.loads(wire.read_text(encoding="utf-8"))
         shared = {"models": actual["knowledgeBase"]["models"],
                   "answerInstructions": actual["knowledgeBase"]["answerInstructions"]}
+        actual = {key: value for key, value in actual.items() if key not in {"role", "assignmentName"}}
         self.assertEqual(actual, python_payloads(shared))
         self.assertIn("offline", result.stdout)
 
@@ -194,12 +189,25 @@ public sealed class Capture {
             self.assertNotIn(forbidden, code)
         self.assertIn('Path.GetFullPath("..")', code)
         self.assertIn("bool CLEAN_UP = false;", code)
+        self.assertNotIn("grant-search-access", {cell.id for cell in notebook.cells})
+        self.assertNotIn("GrantSearchAsync", code)
+        self.assertNotIn("/roleAssignments", code)
+        intro = next(cell.source for cell in notebook.cells if cell.id == "introduction")
+        for required in ("Required permissions", "Search Index Data Reader",
+                         "Foundry project's managed identity", "../scripts/deploy.ps1",
+                         "does not assign roles"):
+            self.assertIn(required, intro)
         for cell in notebook.cells:
             if cell.cell_type == "code":
                 self.assertEqual(cell.metadata["vscode"]["languageId"], "polyglot-notebook")
                 self.assertEqual(cell.metadata["polyglot_notebook"]["kernelName"], "csharp")
         for source in ("IqSettings.cs", "IqSources.cs", "IqWorkshop.cs", "IqHostedRuntime.cs"):
             body = "public " + (PROJECT / source).read_text(encoding="utf-8").split("public ", 1)[1].strip()
+            if source == "IqWorkshop.cs":
+                start = body.index("    public async Task<bool> GrantSearchAsync(")
+                end = body.index("    public async Task CleanupAsync(", start)
+                body = body[:start] + body[end:]
+                body = body.replace('    public const string ReaderRole = "1407120a-92aa-4202-b7e9-c0e197c71c8f";\n', "")
             self.assertIn(body, code)
         for path, text in ((NOTEBOOK, "\n".join(c.source for c in notebook.cells)),
                            (PROJECT / "README.md", (PROJECT / "README.md").read_text(encoding="utf-8"))):
@@ -241,7 +249,8 @@ class IqToolboxNotebookTests(unittest.TestCase):
             cell = next(c for c in self.notebook.cells if c.id == "cleanup")
             cell.source = cell.source.replace("bool CLEAN_UP = false;", "bool CLEAN_UP = true;")
         tests = (HARNESS / "IqToolboxTests.cs").read_text(encoding="utf-8")
-        handler = tests[tests.index("public sealed record CapturedIqRequest"):] + """
+        handler = tests[tests.index("public sealed record CapturedIqRequest"):].replace(
+            "IqWorkshop.ReaderRole", '"1407120a-92aa-4202-b7e9-c0e197c71c8f"') + """
 client.Dispose();
 IqOfflineHandler handler = new IqOfflineHandler();
 client = new HttpClient(handler);
@@ -260,9 +269,9 @@ handler.Mode = """ + json.dumps(mode) + ";"
             self.assertEqual(NOTEBOOK.read_bytes(), self.original_bytes)
 
     def test_actual_full_notebook_chain_uses_project_transport_and_source_only_archive(self):
-        self.execute(checks="""
+        self.execute(mode="role-denied", checks="""
 if (settings.Prefix != "alice01" || selectedVersion != "1") throw new Exception("Settings/version");
-if (handler.Requests.Count != 20 || tokenCalls != 20 || handler.Requests.Any(r => r.Method == "DELETE"))
+if (handler.Requests.Count != 18 || tokenCalls != 18 || handler.Requests.Any(r => r.Method == "DELETE"))
     throw new Exception("Hidden call/retry/cleanup");
 foreach (CapturedIqRequest request in handler.Requests)
 {
@@ -274,8 +283,7 @@ foreach (CapturedIqRequest request in handler.Requests)
 }
 CapturedIqRequest upload = handler.Requests.Single(r => r.Code != null);
 if (!JsonNode.DeepEquals(upload.Body, lab.CodeMetadata())) throw new Exception("Hosted definition");
-CapturedIqRequest role = handler.Requests.Single(r => r.Method == "PUT" && r.Url.Contains("/roleAssignments/"));
-if (role.Body["properties"]["principalId"].ToString() != IqTestData.Principal) throw new Exception("Not project principal");
+if (handler.Requests.Any(r => r.Url.Contains("/roleAssignments"))) throw new Exception("Notebook attempts role assignment");
 if (handler.Requests.Count(r => r.Url.Contains("/responses?")) != 2) throw new Exception("Model retries");
 using (MemoryStream bytes = new MemoryStream(upload.Code))
 using (ZipArchive bundle = new ZipArchive(bytes, ZipArchiveMode.Read))
@@ -310,10 +318,9 @@ if (handler.Requests.Count != 5 || handler.Requests.Count(r => r.Method == "PUT"
     throw new Exception("Successful 204 update was not read back once without a write retry");
 """)
 
-    def test_actual_grant_handoff_and_failed_invocations_stop_without_paid_retries(self):
+    def test_actual_failed_invocations_stop_without_paid_retries(self):
         original = self.notebook
         for cell_id, mode, expected, count in (
-                ("grant-search-access", "role-denied", "administrator handoff", 2),
                 ("invoke", "denied", "HTTP 403", 1),
                 ("invoke", "tool-error", "tool", 1),
                 ("invoke", "incomplete", "did not complete", 1)):

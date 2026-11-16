@@ -599,9 +599,10 @@ Guarded cleanup removes only this lab's four objects, preserves lab 11/index/loc
 Open [14-foundry-iq-toolbox-agent.ipynb](../../c-sharp-notebooks/14-foundry-iq-toolbox-agent.ipynb)
 with the C# kernel and `c-sharp-notebooks` working directory.
 All BCL helpers are inline; no console import or local SDK packages are required by the notebook.
-Run the explained, separate KB/connection/toolbox/source/package/deploy/wait/grant/question cells.
-A denied grant stops execute-all before model calls; after the administrator confirms access,
-continue with invocation. Cleanup defaults to false. Clear outputs before sharing.
+Run the explained, separate KB/connection/toolbox/source/package/deploy/wait/question cells.
+The project identity's Search Index Data Reader role is a documented prerequisite, provisioned and
+verified by the deployment scripts. The notebook does not assign roles or require participants to
+have role-assignment permission. Cleanup defaults to false. Clear outputs before sharing.
 
 Offline tests compile the actual generated host, compare current Python14 payloads/role UUIDs,
 and execute the real inline cells against synthetic HTTP and credentials:

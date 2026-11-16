@@ -14,7 +14,7 @@ Complete **07 and 11** in either language with the same prefix; retain `<prefix>
 |---|---|
 | Workshop author | Foundry Owner on the parent resource, Search Service Contributor and existing Search read access; create resources using the deployment-tenant Azure CLI login. |
 | Role-assignment administrator | Permission to assign roles at the Search service, separate from ordinary authoring roles. |
-| **Project managed identity** | **Search Index Data Reader once on the Search service**: service authentication for this `ProjectManagedIdentity` connection, reusable across agents. |
+| **Project managed identity** | **Search Index Data Reader on the Search service**: service authentication for this `ProjectManagedIdentity` connection, reusable across agents. The deployment scripts provision and verify this prerequisite; the notebooks do not assign roles. |
 | **Signed-in ordinary user** | Foundry invocation access; user's identity determines SharePoint ACL filtering. Use non-admin accounts for the two-user test, without Search Contributor/elevated-read privileges. |
 | Hosted runtime identity | Existing model inference and Toolbox access. No per-agent Search grant for this connection. |
 | Search service identity | Existing KB model planning/synthesis and ingestion permissions from earlier labs. |
@@ -84,7 +84,9 @@ dotnet run --project .\c-sharp-console-apps\14-foundry-iq-toolbox-agent -- invok
 
 Commands are independent and do not silently repair mismatched prerequisites. No question retries, credential/answer/session cache or implicit cleanup. Agent invocation follows the **agent name's endpoint routing**; a version selected for polling does not pin Responses routing. Each C# invocation acquires an Azure CLI token afresh so account switches do not reuse a cached user token.
 
-### Section 8: what the project role assignment actually does
+### Project Search access: already handled by deployment
+
+`scripts\deploy.ps1` and `infra\data.bicep` configure the project's Search Index Data Reader role. Both notebooks document it under **Required permissions**, without a role-assignment step. For an environment prepared another way, an administrator must configure it before participants start. The standalone console command below remains available for explicitly repairing a missing grant; it is not a notebook step.
 
 `grant-search` authenticates ARM with **your author/admin login**, reads the configured project, verifies its resource ID and `identity.principalId`, and PUTs a deterministic role assignment at the Search service:
 

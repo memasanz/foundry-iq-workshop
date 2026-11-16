@@ -20,7 +20,6 @@ NOTEBOOK = ROOT / "python-notebooks" / "14-foundry-iq-toolbox-agent.ipynb"
 TENANT = "11111111-1111-1111-1111-111111111111"
 ALICE = "22222222-2222-2222-2222-222222222222"
 BOB = "33333333-3333-3333-3333-333333333333"
-PROJECT_PRINCIPAL = "44444444-4444-4444-4444-444444444444"
 SEARCH_ID = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Search/searchServices/search"
 PROJECT_ID = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/foundry/projects/project"
 
@@ -195,40 +194,16 @@ class PythonIqDelegationTests(unittest.TestCase):
         self.assertEqual(tool.server_url, self.ns["knowledge_base_mcp_url"])
         client.toolboxes.update.assert_called_once_with("alice01-iq-toolbox", default_version="2")
 
-    def prepare_grant(self, principal=PROJECT_PRINCIPAL, status=201):
-        self.ns["requests"].get.return_value = http_response(200, {"identity": {"principalId": principal}})
-        self.ns["requests"].put.return_value = http_response(status, {})
-        self.ns["version"] = SimpleNamespace(instance_identity=SimpleNamespace(principal_id=BOB))
-
-    def test_project_identity_is_read_validated_and_granted_not_agent_identity(self):
-        self.prepare_grant()
-        self.execute("grant-search-access")
-        call = self.ns["requests"].put.call_args
-        properties = call.kwargs["json"]["properties"]
-        self.assertEqual(properties["principalId"], PROJECT_PRINCIPAL)
-        reader = "1407120a-92aa-4202-b7e9-c0e197c71c8f"
-        assignment = uuid.uuid5(uuid.NAMESPACE_URL, f"{SEARCH_ID}/{PROJECT_PRINCIPAL}/{reader}")
-        self.assertIn(f"/roleAssignments/{assignment}?", call.args[0])
-        self.assertEqual(self.ns["requests"].get.call_args.args[0],
-                         f"https://management.azure.com{PROJECT_ID}?api-version=2025-04-01-preview")
-        self.assertEqual(properties["principalType"], "ServicePrincipal")
-        self.assertEqual(properties["roleDefinitionId"],
-                         f"{SEARCH_ID}/providers/Microsoft.Authorization/roleDefinitions/{reader}")
-
-    def test_missing_project_identity_and_denied_grant_stop_with_safe_admin_handoff(self):
-        for principal in (None, "not-a-guid"):
-            with self.subTest(principal=principal):
-                self.prepare_grant(principal)
-                with self.assertRaises(RuntimeError):
-                    self.execute("grant-search-access")
-                self.ns["requests"].put.assert_not_called()
-        self.prepare_grant(status=403)
-        with self.assertRaisesRegex(PermissionError, "Stop before questions"):
-            self.execute("grant-search-access")
-        self.assertIn(PROJECT_PRINCIPAL, self.output.getvalue())
-        self.assertIn(SEARCH_ID, self.output.getvalue())
-        self.assertIn("Access control (IAM)", self.output.getvalue())
-        self.assertNotIn("synthetic-arm-token", self.output.getvalue())
+    def test_notebook_uses_deployment_prerequisite_instead_of_assigning_search_roles(self):
+        self.assertNotIn("grant-search-access", self.sources)
+        code = "\n".join(self.sources.values())
+        self.assertNotIn("/roleAssignments", code)
+        intro = "".join(next(cell for cell in self.notebook["cells"]
+                             if cell["id"] == "introduction")["source"])
+        for required in ("Required permissions", "Search Index Data Reader",
+                         "Foundry project's managed identity", "deployment script",
+                         "../scripts/deploy.ps1", "does not assign roles"):
+            self.assertIn(required, intro)
 
     def prepare_invocations(self, tokens, result=None):
         credentials = []
