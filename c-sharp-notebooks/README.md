@@ -327,20 +327,24 @@ active sessions or remove shared resources/local files. Clear outputs before sha
 ## 17. Open and run lab 14
 
 Open [14-foundry-iq-toolbox-agent.ipynb](14-foundry-iq-toolbox-agent.ipynb) with the same C# kernel and
-`c-sharp-notebooks` working directory. Keep lab 11's Blob source/KB with the same prefix and confirm
+`c-sharp-notebooks` working directory. Keep lab 07's ACL-enabled index and lab 11's SharePoint source/KB with the same prefix and confirm
 the .NET remote-build path from lab 13 works. Lab 12 is not required.
 See [lab 14 prerequisites, architecture and step explanations](../c-sharp-console-apps/14-foundry-iq-toolbox-agent/README.md).
 
-Run inline setup, Blob-only KB, agentic connection, toolbox publication, source writing, packaging,
-deployment, fixed-version wait, per-agent Search grant and the two question cells.
-The shared architecture diagram explains caller, agent and Search identities; the notebook maps its
-Python labels to C# `AsAIAgent`, `AddFoundryToolboxes` and the Responses hosting layer.
+Run inline setup, SharePoint-only KB, project-identity connection, Toolbox publication, source writing, packaging,
+deployment, fixed-version wait and project service grant. Switch to ordinary users for question cells.
+The notebook explains service authentication versus user source authorization, with C# `AsAIAgent`,
+native `AddFoundryToolboxes` and Responses protocol 2.0.0 caller-context forwarding.
 The hosted agent uses `TOOLBOX_NAME`, not a Search URL, KB name, key or local retrieval function.
 
 Source goes to `<prefix>-csharp-hosted-agent-iq`; Azure names match Python14.
-Your user authors/invokes, but the `AgenticIdentityToken` connection calls Search as the deployed
-agent's own principal. It needs Search Index Data Reader on Search. Role assignment needs separate
+The `ProjectManagedIdentity` connection authenticates Search calls with the project identity;
+Foundry supplies each signed-in user's source token for indexed SharePoint ACL filtering.
+The project needs Search Index Data Reader on Search. Role assignment needs separate
 administrator rights: HTTP 403 prints the handoff and stops execute-all before questions.
+Verify Alice/Bob retrieval evidence/citations, not just model answers. Missing source authorization
+can return unfiltered indexed content; client/container guards do not prove the managed Search header.
+Use the Polyglot Notebook editor language with the csharp kernel, not plain-C# editor cells.
 After the administrator confirms the grant, continue with invocation; do not redeploy or repeatedly ask questions.
 
 Inspect successful retrieval output/citations and the unknown-answer test; active does not prove runtime

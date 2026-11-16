@@ -554,10 +554,10 @@ generated-agent build checks need access to the configured NuGet feed. Neither m
 
 ### C# console app (lab 14)
 
-Lab 14 connects a **C# hosted agent to a Foundry IQ toolbox**, backed by lab 11's existing Blob source.
-It creates a separate Blob-only KB, an `AgenticIdentityToken` Search connection, an immutable toolbox
-version/default and a hosted version; then grants the deployed agent principal Search access before questions.
-Use lab 11's prefix/resources and an existing .NET remote-build-capable Foundry project/model.
+Lab 14 connects a **C# hosted agent to a Foundry IQ Toolbox**, backed by lab 07/11's indexed SharePoint ACLs.
+It creates a SharePoint-only KB, a `ProjectManagedIdentity` Search connection, an immutable Toolbox
+version/default and a hosted version; the project gets service access while Foundry supplies user source authorization.
+Use lab 07/11's prefix/resources and an existing .NET remote-build-capable Foundry project/model.
 Lab 12, Python, Docker, `azd`, Web IQ keys, a broker and app registrations are not prerequisites.
 See [lab 14 README, architecture, permissions and step table](../../c-sharp-console-apps/14-foundry-iq-toolbox-agent/README.md).
 
@@ -571,17 +571,24 @@ an administrator handoff and exits 3 **before questions**. After the administrat
 not another full deployment. Role propagation may take time; questions are never retried automatically.
 
 Independent steps: `verify-sources`, `knowledge-base`, `connection`, `toolbox`, `check-toolbox`,
-`write-agent`, `package`, `deploy`, `status [version]`, `wait [version]`, `grant-search [version]`,
+`write-agent`, `package`, `deploy`, `status [version]`, `wait [version]`, `grant-search`,
 `invoke [question] [--diagnostics]`, `invoke-unknown [--diagnostics]` and `cleanup --confirm`.
 Metadata/setup commands do not implicitly ask questions or repair earlier missing resources.
 Generated source goes to `<prefix>-csharp-hosted-agent-iq`; packaging preserves edits.
 `write-agent`/`run` overwrite source; both language tracks publish under the same prefixed Azure names.
 
 The generated host follows the sample's `AsAIAgent` + `AddFoundryToolboxes` + Responses hosting pattern.
-There is no local retrieval function or Search URL in agent code. Your user authors/invokes;
-the connection calls Search as **this deployed agent's own principal**, not your user/project identity.
-It needs Search Index Data Reader on Search; assigning that role requires separate role-assignment permission.
+There is no local retrieval function or Search URL in agent code. The author sets up resources;
+ordinary signed-in users invoke fresh conversations. The **project managed identity** authenticates service calls,
+while Foundry dynamically supplies each user's Search source token for indexed document ACL filtering.
+The project needs Search Index Data Reader; assigning it requires separate role-assignment permission.
 Retain Search/model service-identity grants from earlier labs. The architecture explains the two model layers.
+
+Use individual commands to switch from author to ordinary user before permission tests. Run the same
+restricted-fact question as Alice (allowed) and Bob (denied), inspecting tool evidence and citations,
+not just model wording. Search can return unfiltered indexed content if source authorization is missing;
+the sample's client/container guards do not prove the final managed header. Do not use sensitive content
+until real user isolation has been verified; never fall back to app-only/shared access.
 
 Inspect evidence, tool errors and citations; the unknown-answer question is not guaranteed to be refused.
 Hosted compute/sessions, Search and both model layers can incur charges.

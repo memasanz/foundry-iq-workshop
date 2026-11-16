@@ -157,8 +157,11 @@ public sealed partial class IqWorkshop
         {
             Content = new StringContent(new JsonObject { ["input"] = question, ["store"] = false }.ToJsonString(), Encoding.UTF8, "application/json"),
         };
-        IqReply reply = await SendRequestAsync(request, "https://ai.azure.com", new[] { 200 }, TimeSpan.FromMinutes(5));
+        IqReply reply = await SendRequestAsync(request, "https://ai.azure.com", new[] { 200 }, TimeSpan.FromMinutes(5), requireUser: true);
         JsonObject response = reply.Json ?? throw new InvalidOperationException("Responses API returned no response object.");
+        if ((response["output"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()
+            .Any(item => (string?)item["type"] == "oauth_consent_request"))
+            throw new InvalidOperationException("User consent is required. Complete Foundry's user authorization flow in a supported client, then invoke explicitly. No app-only fallback or automatic retry was made.");
         if ((string?)response["status"] != "completed" || response["error"] != null || response["incomplete_details"] != null)
             throw new InvalidOperationException("Hosted response did not complete. No automatic question retry was made.");
         JsonArray output = response["output"] as JsonArray ?? throw new InvalidOperationException("Hosted response omitted output.");

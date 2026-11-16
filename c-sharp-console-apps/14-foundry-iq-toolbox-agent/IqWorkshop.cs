@@ -17,7 +17,7 @@ public sealed record IqReply(int Status, JsonObject? Json);
 public sealed partial class IqWorkshop
 {
     public const string ReaderRole = "1407120a-92aa-4202-b7e9-c0e197c71c8f";
-    public const string Question = "What is our policy for booking international travel?";
+    public const string Question = "Using the SharePoint documents I can access, what are the main recommendations about sustainability and AI? Cite the documents.";
     public const string UnknownQuestion = "What is the capital of Australia?";
     private const string Features = "A2AAgents=V1Preview,WorkflowAgents=V1Preview,DraftAgents=V1Preview," +
         "VoiceAgents=V1Preview,DigitalWorker=V1Preview,GitHubCopilot=V1Preview,Skills=V1Preview," +
@@ -42,27 +42,48 @@ public sealed partial class IqWorkshop
 
     public async Task<JsonObject> VerifySourcesAsync()
     {
-        JsonObject source = await RequiredAsync(HttpMethod.Get, SearchUrl("knowledgesources", settings.BlobSource),
-            "https://search.azure.com", missing: "Complete lab 11 first and retain " + settings.BlobSource + ".");
-        if ((string?)source["name"] != settings.BlobSource || (string?)source["kind"] != "searchIndex" ||
-            string.IsNullOrWhiteSpace((string?)source["searchIndexParameters"]?["searchIndexName"]))
-            throw new InvalidOperationException("The existing lab 11 Blob source is not a valid searchIndex source.");
+        JsonObject source = await RequiredAsync(HttpMethod.Get, SearchUrl("knowledgesources", settings.SharePointSource),
+            "https://search.azure.com", missing: "Complete lab 11 first and retain " + settings.SharePointSource + ".");
+        if ((string?)source["name"] != settings.SharePointSource || (string?)source["kind"] != "searchIndex" ||
+            (string?)source["searchIndexParameters"]?["searchIndexName"] != settings.SharePointIndex)
+            throw new InvalidOperationException("The existing lab 11 SharePoint searchIndex source must target " + settings.SharePointIndex + ".");
+        JsonObject index = await RequiredAsync(HttpMethod.Get, SearchUrl("indexes", settings.SharePointIndex),
+            "https://search.azure.com", missing: "Complete lab 07 first and retain its permission-enabled SharePoint index.");
+        ValidateSharePointIndex(index);
         JsonObject shared = await RequiredAsync(HttpMethod.Get, SearchUrl("knowledgebases", settings.SharedBase),
             "https://search.azure.com", missing: "Complete lab 11 first and retain " + settings.SharedBase + ".");
         if ((string?)shared["name"] != settings.SharedBase || shared["models"] is not JsonArray models || models.Count == 0)
             throw new InvalidOperationException("Lab 11 knowledge base is missing its model settings.");
-        Console.WriteLine("Read existing source " + settings.BlobSource + " and model settings from " + settings.SharedBase + ".");
+        Console.WriteLine("Checked SharePoint source/index ACL schema and model settings from " + settings.SharedBase + ". No documents were queried.");
         return shared;
+    }
+
+    private void ValidateSharePointIndex(JsonObject index)
+    {
+        JsonArray fields = index["fields"] as JsonArray ?? new JsonArray();
+        bool Permission(string name, string kind) => fields.OfType<JsonObject>().Any(field =>
+            (string?)field["name"] == name && (string?)field["type"] == "Collection(Edm.String)" &&
+            (string?)field["permissionFilter"] == kind && (bool?)field["filterable"] == true &&
+            (bool?)field["retrievable"] == false);
+        bool Retrievable(string name) => fields.OfType<JsonObject>().Any(field =>
+            (string?)field["name"] == name && (bool?)field["retrievable"] != false);
+        if ((string?)index["name"] != settings.SharePointIndex || (string?)index["permissionFilterOption"] != "enabled" ||
+            !Permission("UserIds", "userIds") || !Permission("GroupIds", "groupIds") ||
+            new[] { "id", "content", "sourceFile", "webUrl", "page", "pageTo" }.Any(name => !Retrievable(name)) ||
+            !fields.OfType<JsonObject>().Any(field => (string?)field["name"] == "content" && (bool?)field["searchable"] == true) ||
+            !(index["semantic"]?["configurations"] as JsonArray ?? new JsonArray())
+                .OfType<JsonObject>().Any(config => (string?)config["name"] == "semantic-config"))
+            throw new InvalidOperationException("Lab 07 SharePoint index must retain its user/group ACL schema, retrievable source fields and semantic-config. No unfiltered fallback is used.");
     }
 
     public JsonObject KnowledgeBaseDefinition(JsonObject shared) => new JsonObject
     {
         ["name"] = settings.BaseName,
-        ["description"] = "Workshop policy documents from Blob storage, for the hosted agent.",
-        ["retrievalInstructions"] = "Use " + settings.BlobSource + " for questions about company policy, travel, onboarding or documents.",
+        ["description"] = "SharePoint documents with Entra user/group ACLs, for user-delegated hosted retrieval.",
+        ["retrievalInstructions"] = "Use " + settings.SharePointSource + " for questions about SharePoint documents. Retrieve only evidence authorized for the signed-in user.",
         ["answerInstructions"] = shared["answerInstructions"]?.DeepClone(),
         ["outputMode"] = "answerSynthesis",
-        ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = settings.BlobSource }),
+        ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = settings.SharePointSource }),
         ["models"] = shared["models"]?.DeepClone(),
         ["retrievalReasoningEffort"] = new JsonObject { ["kind"] = "low" },
     };
@@ -82,7 +103,7 @@ public sealed partial class IqWorkshop
         ["properties"] = new JsonObject
         {
             ["category"] = "RemoteTool",
-            ["authType"] = "AgenticIdentityToken",
+            ["authType"] = "ProjectManagedIdentity",
             ["target"] = settings.McpUrl,
             ["audience"] = "https://search.azure.com",
             ["isSharedToAll"] = true,
@@ -97,13 +118,13 @@ public sealed partial class IqWorkshop
         JsonObject connection = await RequiredAsync(HttpMethod.Put, ConnectionUrl(), "https://management.azure.com",
             ConnectionDefinition(), accepted: new[] { 200, 201 });
         ValidateConnection(connection);
-        Console.WriteLine("Connection ready: " + settings.ConnectionName + " | agent identity, no key.");
+        Console.WriteLine("Connection ready: " + settings.ConnectionName + " | project service identity; Foundry supplies per-user source authorization.");
         return connection;
     }
 
     public JsonObject ToolboxDefinition() => new JsonObject
     {
-        ["description"] = "Foundry IQ knowledge base for the workshop hosted agent.",
+        ["description"] = "Foundry IQ SharePoint knowledge base for user-delegated hosted retrieval.",
         ["tools"] = new JsonArray(new JsonObject
         {
             ["type"] = "mcp",
@@ -145,18 +166,21 @@ public sealed partial class IqWorkshop
         JsonObject version = await RequiredAsync(HttpMethod.Get, ToolboxUrl("/versions/" + Uri.EscapeDataString(number)), "https://ai.azure.com");
         ValidateToolboxVersion(version);
         if ((string?)version["version"] != number) throw new InvalidOperationException("Wrong toolbox default version returned.");
-        Console.WriteLine("Checked existing toolbox default " + number + " and agentic Search connection. No tools were executed.");
+        Console.WriteLine("Checked existing toolbox default " + number + " and project-identity Search connection. No tools were executed.");
         return version;
     }
 
-    public async Task<bool> GrantSearchAsync(string? versionId = null)
+    public async Task<bool> GrantSearchAsync()
     {
-        JsonObject version = versionId == null ? await LatestAsync() : await StatusAsync(versionId);
-        if ((string?)version["status"] != "active") throw new InvalidOperationException("Wait for an active hosted version before granting Search access.");
-        string principal = RequiredText(version["instance_identity"] as JsonObject ??
-            throw new InvalidOperationException("Hosted version has no instance identity."), "principal_id");
-        if (!Guid.TryParseExact(principal, "D", out _)) throw new InvalidOperationException("Hosted principal ID is not a GUID.");
-        Console.WriteLine("Agent principal ID: " + principal + " | Search scope: " + settings.SearchResourceId);
+        JsonObject project = await RequiredAsync(HttpMethod.Get,
+            "https://management.azure.com" + settings.ProjectResourceId + "?api-version=" + IqSettings.ConnectionApi,
+            "https://management.azure.com");
+        if (!string.Equals((string?)project["id"], settings.ProjectResourceId, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Project lookup returned a different resource.");
+        string principal = RequiredText(project["identity"] as JsonObject ??
+            throw new InvalidOperationException("The Foundry project needs an existing managed identity. This step does not enable one."), "principalId");
+        if (!Guid.TryParseExact(principal, "D", out _)) throw new InvalidOperationException("Project principal ID is not a GUID.");
+        Console.WriteLine("Project principal ID: " + principal + " | Search scope: " + settings.SearchResourceId);
         string assignment = RoleAssignmentName(settings.SearchResourceId, principal);
         string url = "https://management.azure.com" + settings.SearchResourceId +
             "/providers/Microsoft.Authorization/roleAssignments/" + assignment + "?api-version=2022-04-01";
@@ -172,8 +196,8 @@ public sealed partial class IqWorkshop
         if (reply.Status == 403)
         {
             Console.WriteLine("Search role was NOT granted. Ask an administrator to run:");
-            Console.WriteLine("  .\\scripts\\grant-agent-search-access.ps1 -PrincipalId " + principal);
-            Console.WriteLine("Confirm the helper's environment file points to the Search scope printed above.");
+            Console.WriteLine("  Search service -> Access control (IAM) -> Add role assignment -> Search Index Data Reader");
+            Console.WriteLine("  Assign it to the PROJECT principal printed above at the printed Search scope.");
             return false;
         }
         if (reply.Status == 409)
@@ -189,9 +213,9 @@ public sealed partial class IqWorkshop
                 string.Equals((string?)role["properties"]?["scope"], settings.SearchResourceId, StringComparison.OrdinalIgnoreCase) &&
                 ((string?)role["properties"]?["roleDefinitionId"] ?? "").EndsWith("/" + ReaderRole, StringComparison.OrdinalIgnoreCase));
             if (!matched) throw new InvalidOperationException("Could not verify an existing Search reader assignment on this service. Ask an administrator.");
-            Console.WriteLine("Verified existing Search Index Data Reader for this agent on this Search service.");
+            Console.WriteLine("Verified existing Search Index Data Reader for this project identity on this Search service.");
         }
-        else Console.WriteLine("Granted Search Index Data Reader on this Search service.");
+        else Console.WriteLine("Granted project service access to Search. This does not grant users access to SharePoint documents.");
         Console.WriteLine("Role propagation can take time. Invoke explicitly when ready; no automatic model-call retries.");
         return true;
     }
@@ -239,22 +263,22 @@ public sealed partial class IqWorkshop
         if (kb.Status == 200)
             await SendAsync(HttpMethod.Delete, SearchUrl("knowledgebases", settings.BaseName), "https://search.azure.com", accepted: new[] { 200, 204, 404 });
         Console.WriteLine("Cleanup requested only for this lab's agent, toolbox, connection and knowledge base.");
-        Console.WriteLine("Lab 11 source/base, index, shared resources, Search role assignments and local code retained.");
+        Console.WriteLine("Lab 07 index, lab 11 sources/base, shared resources, Search role assignments and local code retained.");
     }
 
     private void ValidateKnowledgeBase(JsonObject kb)
     {
         if ((string?)kb["name"] != settings.BaseName || kb["knowledgeSources"] is not JsonArray sources ||
-            sources.Count != 1 || (string?)sources[0]?["name"] != settings.BlobSource)
-            throw new InvalidOperationException("Expected this prefix's Blob-only toolbox knowledge base. Run knowledge-base first.");
+            sources.Count != 1 || (string?)sources[0]?["name"] != settings.SharePointSource)
+            throw new InvalidOperationException("Expected this prefix's SharePoint-only toolbox knowledge base. Run knowledge-base first.");
     }
 
     private void ValidateConnection(JsonObject connection)
     {
         JsonObject? p = connection["properties"] as JsonObject;
-        if ((string?)p?["category"] != "RemoteTool" || (string?)p?["authType"] != "AgenticIdentityToken" ||
+        if ((string?)p?["category"] != "RemoteTool" || (string?)p?["authType"] != "ProjectManagedIdentity" ||
             (string?)p?["target"] != settings.McpUrl || (string?)p?["audience"] != "https://search.azure.com")
-            throw new InvalidOperationException("Existing connection does not match this KB and AgenticIdentityToken Search authentication. Run connection first.");
+            throw new InvalidOperationException("Existing connection does not match this KB and ProjectManagedIdentity Search authentication. Run connection first.");
     }
 
     private void ValidateToolboxVersion(JsonObject version)
@@ -292,13 +316,15 @@ public sealed partial class IqWorkshop
         return await SendRequestAsync(request, resource, accepted ?? new[] { 200 }, TimeSpan.FromSeconds(90));
     }
 
-    private async Task<IqReply> SendRequestAsync(HttpRequestMessage request, string resource, int[] accepted, TimeSpan timeout)
+    private async Task<IqReply> SendRequestAsync(HttpRequestMessage request, string resource, int[] accepted, TimeSpan timeout,
+        bool requireUser = false)
     {
         using var cancellation = new CancellationTokenSource(timeout);
         string token = await getToken(resource).WaitAsync(cancellation.Token);
         if (string.IsNullOrWhiteSpace(token) || token.Any(char.IsWhiteSpace))
             throw new InvalidOperationException("Invalid bearer token from token acquisition.");
         knownTokens.Add(token);
+        if (requireUser) settings.ValidateUserToken(token, utcNow());
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (resource == "https://ai.azure.com") request.Headers.Add("Foundry-Features", Features);

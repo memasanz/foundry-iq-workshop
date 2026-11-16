@@ -34,7 +34,7 @@ try
     Task Delay(TimeSpan duration) { clock += duration; return Task.CompletedTask; }
     var lab = new IqWorkshop(settings, client, Token, () => clock, Delay);
     int result = await IqToolboxAgentProgram.RunAsync(new[] { "run" }, root, client, Token, () => clock, Delay);
-    Check(result == 0 && handler.Requests.Count == 19, "Full flow hidden/missing operations");
+    Check(result == 0 && handler.Requests.Count == 20, "Full flow hidden/missing operations");
     Check(handler.Requests.All(r => r.Method != "DELETE"), "Run performs cleanup");
     Check(tokenCalls == handler.Requests.Count, "Wrong credential acquisition count");
     Check(handler.Requests.Count(r => r.Url.Contains("/responses?")) == 2, "Billable retries or implicit question");
@@ -47,7 +47,7 @@ try
     }
     var kb = handler.Requests.Single(r => r.Method == "PUT" && r.Url.StartsWith(settings.SearchEndpoint));
     Check(kb.Body!["knowledgeSources"]!.AsArray().Count == 1 &&
-        kb.Body["knowledgeSources"]![0]!["name"]!.ToString() == settings.BlobSource, "Not Blob-only");
+        kb.Body["knowledgeSources"]![0]!["name"]!.ToString() == settings.SharePointSource, "Not SharePoint-only");
     Check(JsonNode.DeepEquals(kb.Body["models"], IqTestData.SharedBase()["models"]), "Models not copied");
     var connection = handler.Requests.Single(r => r.Method == "PUT" && r.Url.Contains("/connections/"));
     Check(JsonNode.DeepEquals(connection.Body, lab.ConnectionDefinition()), "Wrong keyless agent connection");
@@ -61,7 +61,7 @@ try
     using (var bundle = new ZipArchive(new MemoryStream(upload.Code!), ZipArchiveMode.Read))
         Check(bundle.Entries.Select(e => e.FullName).OrderBy(n => n).SequenceEqual(new[] { "Program.cs", "WorkshopIqAgent.csproj" }), "Archive includes secrets/build files");
     var role = handler.Requests.Single(r => r.Method == "PUT" && r.Url.Contains("/roleAssignments/"));
-    Check(role.Body!["properties"]!["principalId"]!.ToString() == IqTestData.Principal, "Wrong user/project principal");
+    Check(role.Body!["properties"]!["principalId"]!.ToString() == IqTestData.Principal, "Not project principal");
     Check(role.Url.StartsWith("https://management.azure.com" + settings.SearchResourceId + "/providers/"), "Wrong role scope");
     if (args.Length == 2 && args[0] == "--wire")
         File.WriteAllText(args[1], new JsonObject
@@ -79,8 +79,9 @@ try
         await IqToolboxAgentProgram.RunAsync(new[] { command }, root, client, Token, () => clock, Delay);
         int expected = command switch
         {
-            "verify-sources" or "connection" => 2,
-            "knowledge-base" or "check-toolbox" => 3,
+            "connection" => 2,
+            "verify-sources" or "check-toolbox" => 3,
+            "knowledge-base" => 4,
             "toolbox" or "deploy" => 4,
             _ => 1,
         };
@@ -111,6 +112,20 @@ try
         handler.Reset(mode);
         await Fails(() => lab.DeployAsync(root), mode == "bad-connection" ? "connection" : "toolbox");
         Check(handler.Requests.All(r => r.Method == "GET"), "Deploy repairs mismatched resource implicitly");
+    }
+    foreach (string mode in new[] { "wrong-index", "missing-index", "no-acls", "bad-user-acls", "bad-group-acls", "missing-semantic", "missing-content" })
+    {
+        handler.Reset(mode);
+        await Fails(() => lab.CreateKnowledgeBaseAsync(), mode == "wrong-index" ? "must target" :
+            mode == "missing-index" ? "Complete lab 07" : "ACL schema");
+        Check(handler.Requests.All(r => r.Method == "GET"), "Invalid ACL prerequisites allowed a write");
+    }
+    foreach (string mode in new[] { "no-project-identity", "wrong-project", "bad-project-principal" })
+    {
+        handler.Reset(mode);
+        await Fails(() => lab.GrantSearchAsync(), mode == "wrong-project" ? "different resource" :
+            mode == "bad-project-principal" ? "GUID" : "managed identity");
+        Check(handler.Requests.Count == 1 && handler.Requests[0].Method == "GET", "Invalid project identity allowed a grant");
     }
     handler.Reset();
     int callsBeforeFiles = tokenCalls;
@@ -150,7 +165,7 @@ try
     handler.Reset("role-denied");
     Check(await IqToolboxAgentProgram.RunAsync(new[] { "run" }, root, client, Token, () => clock, Delay) == 3, "Run does not stop at admin handoff");
     Check(handler.Requests.All(r => !r.Url.Contains("/responses?")), "Run bills questions before successful grant");
-    foreach (string mode in new[] { "denied", "partial", "incomplete", "invalid-json", "tool-error", "approval", "no-answer", "echo" })
+    foreach (string mode in new[] { "denied", "partial", "incomplete", "invalid-json", "tool-error", "approval", "consent", "no-answer", "echo" })
     {
         handler.Reset(mode);
         var output = new StringWriter();
@@ -167,6 +182,7 @@ try
                 "incomplete" => "did not complete",
                 "tool-error" => "retrieval failed",
                 "approval" => "approval",
+                "consent" => "consent",
                 "no-answer" => "no answer",
                 _ => "invalid JSON",
             });
@@ -175,6 +191,7 @@ try
         Check(handler.Requests.Count == 1, "Question retried after failure");
         string logs = output + errors.ToString();
         Check(!logs.Contains("synthetic-ai-token") && !logs.Contains("synthetic-search-token") && !logs.Contains("synthetic-arm-token"), "Credential echo in diagnostics");
+        Check(!logs.Contains(IqTestData.Token("https://ai.azure.com")), "Delegated token echo in diagnostics");
         if (mode == "denied")
             foreach (string text in new[] { "UTC (Date):", "synthetic-request", "Response body:", "<redacted>" })
                 Check(logs.Contains(text), "Missing HTTP diagnostics");
@@ -192,7 +209,7 @@ try
     foreach (string mode in new[] { "other-agent", "bad-toolbox", "bad-kb" })
     {
         handler.Reset(mode);
-        await Fails(() => lab.CleanupAsync(true), mode switch { "other-agent" => "workshop", "bad-toolbox" => "toolbox", _ => "Blob-only" });
+        await Fails(() => lab.CleanupAsync(true), mode switch { "other-agent" => "workshop", "bad-toolbox" => "toolbox", _ => "SharePoint-only" });
         Check(handler.Requests.All(r => r.Method == "GET"), "Unsafe delete before preflight");
     }
     handler.Reset("cleanup-conflict");
@@ -206,6 +223,25 @@ try
     await Fails(() => noAuth.InvokeAsync("test"), "authentication failure");
     await Fails(() => lab.InvokeAsync(" "), "non-empty");
     Check(handler.Requests.Count == 0, "Auth/input failure reaches network");
+    foreach (string mode in new[] { "app", "no-scope", "wrong-tenant", "wrong-audience", "expired", "no-user", "malformed" })
+    {
+        string token = IqTestData.UserToken(mode: mode);
+        var invalidUser = new IqWorkshop(settings, client, _ => Task.FromResult(token), () => clock);
+        await Fails(() => invalidUser.InvokeAsync("restricted fact"), "delegated Foundry user token");
+        Check(handler.Requests.Count == 0, "Missing/app-only user context reached network");
+    }
+    string aliceToken = IqTestData.UserToken("44444444-4444-4444-4444-444444444444");
+    string bobToken = IqTestData.UserToken("55555555-5555-5555-5555-555555555555");
+    string currentUserToken = aliceToken;
+    var delegated = new IqWorkshop(settings, client, _ => Task.FromResult(currentUserToken), () => clock);
+    await delegated.InvokeAsync("same restricted fact");
+    currentUserToken = bobToken;
+    await delegated.InvokeAsync("same restricted fact");
+    Check(handler.Requests.Select(r => r.Authorization).SequenceEqual(new[] { "Bearer " + aliceToken, "Bearer " + bobToken }),
+        "Different users reused an invocation credential");
+    Check(handler.Requests.All(r => r.Body!.Count == 2 && (bool?)r.Body["store"] == false &&
+        r.Body["previous_response_id"] == null && r.Body["agent_session_id"] == null), "Cross-user conversation reuse");
+    handler.Reset();
     string invalid = Path.Combine(root, "invalid");
     Directory.CreateDirectory(invalid);
     File.WriteAllText(Path.Combine(invalid, ".env"), "WORKSHOP_PREFIX=invalid!\n");
@@ -230,6 +266,7 @@ public sealed record CapturedIqRequest(string Method, string Url, string? Author
 public static class IqTestData
 {
     public const string Principal = "22222222-2222-2222-2222-222222222222";
+    public const string AgentPrincipal = "33333333-3333-3333-3333-333333333333";
     public static IqSettings Settings => new IqSettings("00000000-0000-0000-0000-000000000000",
         "https://workshop.search.windows.net",
         "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/workshop/providers/Microsoft.Search/searchServices/workshop",
@@ -242,10 +279,40 @@ public static class IqTestData
         "\nAZURE_AI_MODEL_DEPLOYMENT_NAME=workshop-chat\n";
     public static string Token(string resource) => resource switch
     {
-        "https://ai.azure.com" => "synthetic-ai-token",
+        "https://ai.azure.com" => UserToken(),
         "https://search.azure.com" => "synthetic-search-token",
         "https://management.azure.com" => "synthetic-arm-token",
         _ => throw new Exception("Unexpected token resource"),
+    };
+    public static string UserToken(string oid = "44444444-4444-4444-4444-444444444444", string mode = "")
+    {
+        if (mode == "malformed") return "synthetic-invalid-token";
+        var claims = new JsonObject
+        {
+            ["oid"] = mode == "no-user" ? null : oid,
+            ["tid"] = mode == "wrong-tenant" ? "99999999-9999-9999-9999-999999999999" : Settings.Tenant,
+            ["aud"] = mode == "wrong-audience" ? "https://search.azure.com" : "https://ai.azure.com",
+            ["scp"] = mode == "no-scope" ? null : "user_impersonation",
+            ["idtyp"] = mode == "app" ? "app" : "user",
+            ["exp"] = mode == "expired" ? 1 : 2208988800L,
+        };
+        return "eyJhbGciOiJub25lIn0." + Convert.ToBase64String(Encoding.UTF8.GetBytes(claims.ToJsonString()))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_') + ".offline-signature";
+    }
+    public static JsonObject SharePointIndex() => new JsonObject
+    {
+        ["name"] = Settings.SharePointIndex,
+        ["permissionFilterOption"] = "enabled",
+        ["semantic"] = new JsonObject { ["configurations"] = new JsonArray(new JsonObject { ["name"] = "semantic-config" }) },
+        ["fields"] = new JsonArray(
+            new JsonObject { ["name"] = "UserIds", ["type"] = "Collection(Edm.String)", ["permissionFilter"] = "userIds", ["filterable"] = true, ["retrievable"] = false },
+            new JsonObject { ["name"] = "GroupIds", ["type"] = "Collection(Edm.String)", ["permissionFilter"] = "groupIds", ["filterable"] = true, ["retrievable"] = false },
+            new JsonObject { ["name"] = "id", ["retrievable"] = true },
+            new JsonObject { ["name"] = "content", ["searchable"] = true, ["retrievable"] = true },
+            new JsonObject { ["name"] = "sourceFile", ["retrievable"] = true },
+            new JsonObject { ["name"] = "webUrl", ["retrievable"] = true },
+            new JsonObject { ["name"] = "page", ["retrievable"] = true },
+            new JsonObject { ["name"] = "pageTo", ["retrievable"] = true }),
     };
     public static JsonObject SharedBase() => new JsonObject
     {
@@ -278,20 +345,20 @@ public sealed class IqOfflineHandler : HttpMessageHandler
         ["version"] = "1",
         ["status"] = status,
         ["definition"] = new JsonObject { ["kind"] = "hosted" },
-        ["instance_identity"] = new JsonObject { ["principal_id"] = IqTestData.Principal },
+        ["instance_identity"] = new JsonObject { ["principal_id"] = IqTestData.AgentPrincipal },
         ["metadata"] = new JsonObject { ["workshop"] = Mode == "other-agent" ? "other" : "iq", ["attendee"] = settings.Prefix },
     };
     private JsonObject Base() => new JsonObject
     {
         ["name"] = settings.BaseName,
-        ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = Mode == "bad-kb" ? "other-source" : settings.BlobSource }),
+        ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = Mode == "bad-kb" ? "other-source" : settings.SharePointSource }),
     };
     private JsonObject Connection() => new JsonObject
     {
         ["properties"] = new JsonObject
         {
             ["category"] = "RemoteTool",
-            ["authType"] = Mode == "bad-connection" ? "UserEntraToken" : "AgenticIdentityToken",
+            ["authType"] = Mode == "bad-connection" ? "AgenticIdentityToken" : "ProjectManagedIdentity",
             ["target"] = settings.McpUrl,
             ["audience"] = "https://search.azure.com",
             ["isSharedToAll"] = true,
@@ -331,7 +398,7 @@ public sealed class IqOfflineHandler : HttpMessageHandler
             request.Headers.TryGetValues("x-ms-code-zip-sha256", out var sha) ? sha.Single() : null));
         int status = 200;
         JsonObject result = new JsonObject();
-        if (Mode == "denied") { status = 403; result["error"] = "synthetic-ai-token synthetic-search-token synthetic-arm-token"; }
+        if (Mode == "denied") { status = 403; result["error"] = IqTestData.Token("https://ai.azure.com") + " synthetic-search-token synthetic-arm-token"; }
         else if (Mode == "partial") status = 206;
         else if (Mode == "all-missing") status = 404;
         else if (request.Method == HttpMethod.Delete)
@@ -359,14 +426,35 @@ public sealed class IqOfflineHandler : HttpMessageHandler
             });
         }
         else if (path.Contains("/connections/")) { result = Connection(); if (request.Method == HttpMethod.Put) status = 201; }
-        else if (path.EndsWith("/knowledgesources/" + settings.BlobSource))
+        else if (path.Equals(settings.ProjectResourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            result = new JsonObject
+            {
+                ["id"] = Mode == "wrong-project" ? "/subscriptions/other" : settings.ProjectResourceId,
+                ["identity"] = Mode == "no-project-identity" ? null : new JsonObject
+                {
+                    ["principalId"] = Mode == "bad-project-principal" ? "not-a-guid" : IqTestData.Principal,
+                },
+            };
+        }
+        else if (path.EndsWith("/indexes/" + settings.SharePointIndex))
+        {
+            result = IqTestData.SharePointIndex();
+            status = Mode == "missing-index" ? 404 : 200;
+            if (Mode == "no-acls") result["permissionFilterOption"] = "disabled";
+            if (Mode == "bad-user-acls") result["fields"]![0]!["permissionFilter"] = null;
+            if (Mode == "bad-group-acls") result["fields"]![1]!["retrievable"] = true;
+            if (Mode == "missing-semantic") result.Remove("semantic");
+            if (Mode == "missing-content") result["fields"]!.AsArray().RemoveAt(3);
+        }
+        else if (path.EndsWith("/knowledgesources/" + settings.SharePointSource))
         {
             status = Mode == "missing-source" ? 404 : 200;
             result = new JsonObject
             {
-                ["name"] = settings.BlobSource,
+                ["name"] = settings.SharePointSource,
                 ["kind"] = Mode == "bad-source" ? "mcpServer" : "searchIndex",
-                ["searchIndexParameters"] = new JsonObject { ["searchIndexName"] = "alice01-cu-chunks" },
+                ["searchIndexParameters"] = new JsonObject { ["searchIndexName"] = Mode == "wrong-index" ? "alice01-cu-chunks" : settings.SharePointIndex },
             };
         }
         else if (path.EndsWith("/knowledgebases/" + settings.SharedBase))
@@ -393,7 +481,7 @@ public sealed class IqOfflineHandler : HttpMessageHandler
             if (!unknown)
                 output.Add(new JsonObject
                 {
-                    ["type"] = Mode == "approval" ? "mcp_approval_request" : "mcp_call",
+                    ["type"] = Mode == "consent" ? "oauth_consent_request" : Mode == "approval" ? "mcp_approval_request" : "mcp_call",
                     ["name"] = "knowledge_base_retrieve",
                     ["server_label"] = "knowledge_base",
                     ["output"] = "Synthetic policy evidence",
@@ -405,11 +493,11 @@ public sealed class IqOfflineHandler : HttpMessageHandler
                 ["content"] = new JsonArray(new JsonObject
                 {
                     ["type"] = "output_text",
-                    ["text"] = Mode == "no-answer" ? "" : Mode == "echo" ? "synthetic-ai-token" : unknown ? "I don't know from the policy documents." : "Synthetic policy answer.",
-                    ["annotations"] = new JsonArray(new JsonObject { ["type"] = "url_citation", ["url"] = "https://workshop.blob.core.windows.net/docs/policy.pdf#page=2" }),
+                    ["text"] = Mode == "no-answer" ? "" : Mode == "echo" ? IqTestData.Token("https://ai.azure.com") : unknown ? "I don't know from the SharePoint documents." : "Synthetic SharePoint answer.",
+                    ["annotations"] = new JsonArray(new JsonObject { ["type"] = "url_citation", ["url"] = "https://workshop.sharepoint.com/sites/demo/documents/report.pdf#page=2" }),
                 }),
             });
-            result = new JsonObject { ["status"] = Mode == "incomplete" ? "incomplete" : "completed", ["output"] = output, ["agent_session_id"] = "synthetic-session" };
+            result = new JsonObject { ["status"] = Mode is "incomplete" or "consent" ? "incomplete" : "completed", ["output"] = output, ["agent_session_id"] = "synthetic-session" };
         }
         else if (request.Method == HttpMethod.Post) result = Version("creating");
         else if (path.Contains("/versions/"))

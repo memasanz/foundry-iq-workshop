@@ -37,7 +37,8 @@ def python_payloads(shared_base):
     sources = {c.id: ast.parse(c.source) for c in notebook.cells if c.cell_type == "code"}
     context = {
         "__builtins__": {}, "base_kb": shared_base, "prefix": "alice01",
-        "knowledge_base_name": "alice01-toolbox-kb", "blob_source_name": "alice01-kb-blob",
+        "knowledge_base_name": "alice01-toolbox-kb", "sharepoint_source_name": "alice01-kb-sharepoint",
+        "sharepoint_index_name": "alice01-nb7-index",
         "knowledge_base_mcp_url": "https://workshop.search.windows.net/knowledgebases/alice01-toolbox-kb/mcp?api-version=2026-08-01-preview",
         "connection_id": PROJECT_ID + "/connections/alice01-iq-search-mcp",
         "model_name": "workshop-chat", "toolbox_name": "alice01-iq-toolbox",
@@ -121,6 +122,46 @@ class IqToolboxConsoleTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=180)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue((generated / "bin" / "Debug" / "net10.0" / "WorkshopIqAgent.dll").is_file())
+        host_source = (generated / "Program.cs").read_text(encoding="utf-8")
+        guard = host_source[host_source.index("app.App.Use("):host_source.index("app.Run();")]
+        checks = path / "context-guard"
+        checks.mkdir()
+        (checks / "Guard.csproj").write_text("""
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+</Project>
+""", encoding="utf-8")
+        (checks / "Program.cs").write_text("""
+using Microsoft.AspNetCore.Http;
+var app = new Capture();
+""" + guard + """
+foreach (var value in new[] {
+    ("POST", "", "", false), ("POST", "call", "", false),
+    ("POST", "", "user", false), ("POST", "call", "user", true),
+    ("GET", "", "", true) })
+{
+    var context = new DefaultHttpContext();
+    context.Request.Method = value.Item1;
+    context.Request.Headers["x-agent-foundry-call-id"] = value.Item2;
+    context.Request.Headers["x-agent-user-id"] = value.Item3;
+    bool called = false;
+    await app.Handler!(context, _ => { called = true; return Task.CompletedTask; });
+    if (called != value.Item4 || (!called && context.Response.StatusCode != 401))
+        throw new Exception("Missing context allowed model/tool execution or blocked a readiness probe");
+}
+Console.WriteLine("Passed five actual generated request-context guard cases");
+public sealed class Capture {
+    public Capture App => this;
+    public Func<HttpContext, RequestDelegate, Task>? Handler;
+    public void Use(Func<HttpContext, RequestDelegate, Task> handler) => Handler = handler;
+}
+""", encoding="utf-8")
+        result = subprocess.run(["dotnet", "run", "--project", str(checks), "--disable-build-servers"],
+                                cwd=ROOT, capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Passed five", result.stdout)
 
     def test_real_help_and_argument_guards_without_configuration_or_azure_cli(self):
         path = self.fixture()
@@ -154,6 +195,10 @@ class IqToolboxConsoleTests(unittest.TestCase):
         self.assertIn('Path.GetFullPath("..")', code)
         self.assertIn("bool CLEAN_UP = false;", code)
         self.assertTrue(all(c.execution_count is None and not c.outputs for c in notebook.cells if c.cell_type == "code"))
+        for cell in notebook.cells:
+            if cell.cell_type == "code":
+                self.assertEqual(cell.metadata["vscode"]["languageId"], "polyglot-notebook")
+                self.assertEqual(cell.metadata["polyglot_notebook"]["kernelName"], "csharp")
         for source in ("IqSettings.cs", "IqSources.cs", "IqWorkshop.cs", "IqHostedRuntime.cs"):
             body = "public " + (PROJECT / source).read_text(encoding="utf-8").split("public ", 1)[1].strip()
             self.assertIn(body, code)
@@ -215,10 +260,10 @@ handler.Mode = """ + json.dumps(mode) + ";"
             self.notebook = original
             self.assertEqual(NOTEBOOK.read_bytes(), self.original_bytes)
 
-    def test_actual_full_notebook_chain_uses_agent_identity_and_source_only_archive(self):
+    def test_actual_full_notebook_chain_uses_project_transport_and_source_only_archive(self):
         self.execute(checks="""
 if (settings.Prefix != "alice01" || selectedVersion != "1") throw new Exception("Settings/version");
-if (handler.Requests.Count != 19 || tokenCalls != 19 || handler.Requests.Any(r => r.Method == "DELETE"))
+if (handler.Requests.Count != 20 || tokenCalls != 20 || handler.Requests.Any(r => r.Method == "DELETE"))
     throw new Exception("Hidden call/retry/cleanup");
 foreach (CapturedIqRequest request in handler.Requests)
 {
@@ -231,7 +276,7 @@ foreach (CapturedIqRequest request in handler.Requests)
 CapturedIqRequest upload = handler.Requests.Single(r => r.Code != null);
 if (!JsonNode.DeepEquals(upload.Body, lab.CodeMetadata())) throw new Exception("Hosted definition");
 CapturedIqRequest role = handler.Requests.Single(r => r.Method == "PUT" && r.Url.Contains("/roleAssignments/"));
-if (role.Body["properties"]["principalId"].ToString() != IqTestData.Principal) throw new Exception("Not agent principal");
+if (role.Body["properties"]["principalId"].ToString() != IqTestData.Principal) throw new Exception("Not project principal");
 if (handler.Requests.Count(r => r.Url.Contains("/responses?")) != 2) throw new Exception("Model retries");
 using (MemoryStream bytes = new MemoryStream(upload.Code))
 using (ZipArchive bundle = new ZipArchive(bytes, ZipArchiveMode.Read))

@@ -30,7 +30,7 @@ Each lab has its own project folder and README with configuration, run commands 
 | 11 - Foundry IQ knowledge base | Combine Content Understanding Blob chunks, indexed SharePoint and Web IQ; inspect source links, page ranges and raw retrieval diagnostics | [Set up and run lab 11](11-foundry-iq-knowledge-base/README.md) |
 | 12 - Foundry IQ through APIM | Inspect the broker token, reuse existing sources and retrieve through an APIM gateway preserving user context | [Set up and run lab 12](12-foundry-iq-apim/README.md) |
 | 13 - Hosted agent | Write a C# function-tool agent, zip its source, deploy through remote build and invoke its Responses endpoint | [Set up and run lab 13](13-hosted-agent/README.md) |
-| 14 - Hosted agent + Foundry IQ toolbox | Reuse lab 11's Blob source, publish an agentic Search toolbox and ground a C# hosted agent using its own Search principal | [Set up and run lab 14](14-foundry-iq-toolbox-agent/README.md) |
+| 14 - Hosted agent + Foundry IQ toolbox | Reuse lab 07/11 SharePoint ACLs with a managed Toolbox, project service identity and signed-in user source authorization; verify Alice/Bob evidence | [Set up and run lab 14](14-foundry-iq-toolbox-agent/README.md) |
 
 Labs 01-14 currently have C# console apps. The [full lab guide](../docs/labs/README.md) lists the Python labs as well.
 

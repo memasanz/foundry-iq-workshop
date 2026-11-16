@@ -56,7 +56,7 @@ and an [optional legacy C# notebook](../../c-sharp-notebooks/13-hosted-agent.ipy
 for a real C# function-tool agent deployed through remote build, without Docker or `azd`.
 Lab 14 has a [supported C# console app](../../c-sharp-console-apps/14-foundry-iq-toolbox-agent/README.md)
 and an [optional legacy C# notebook](../../c-sharp-notebooks/14-foundry-iq-toolbox-agent.ipynb)
-for a C# hosted agent with a Blob-only Foundry IQ toolbox and its own Search identity/grant.
+for a C# hosted agent with a SharePoint Foundry IQ Toolbox, project service identity and user-delegated document ACL filtering.
 
 | Notebook | Time | What you will do / what comes first |
 |---|---|---|
@@ -70,7 +70,7 @@ for a C# hosted agent with a Blob-only Foundry IQ toolbox and its own Search ide
 | [11 - Foundry IQ knowledge base](../../python-notebooks/11-foundry-iq-knowledge-base.ipynb) | 45-60 min | Combine lab 05's Content Understanding Blob index and lab 07's indexed SharePoint with live Web IQ; ask internal, web and mixed questions without creating indexes or reindexing. |
 | [12 - Foundry IQ through APIM](../../python-notebooks/12-foundry-iq-apim.ipynb) | 30-40 min | Build on notebook 11 using an existing API Management gateway that validates callers and protects the Web IQ key. |
 | [13 - Hosted agent](../../python-notebooks/13-hosted-agent.ipynb) | 20-30 min | Deploy a small code-based agent to Foundry, without Docker. Needs Foundry and the chat model, not notebooks 11-12. |
-| [14 - Hosted agent + Foundry IQ toolbox](../../python-notebooks/14-foundry-iq-toolbox-agent.ipynb) | 30-40 min | Combine the patterns from 11 and 13. Uses Blob content, a shared toolbox connection and a per-agent Search role. |
+| [14 - Hosted agent + Foundry IQ toolbox](../../python-notebooks/14-foundry-iq-toolbox-agent.ipynb) | 40-60 min | Reuse 07/11's indexed SharePoint ACLs through a Toolbox. Separate project service access from user source authorization and verify real Alice/Bob evidence. |
 
 **Optional extension:** [15 - Web IQ authentication](../../python-notebooks/15-web-iq-authentication.ipynb) (25-35 min) explores Entra tokens and managed identities instead of API keys. It is independent of the Search labs and needs a separate caller app/profile binding. Managed-identity exercises require Azure compute exposing that identity; the local exercise uses a hidden secret prompt.
 

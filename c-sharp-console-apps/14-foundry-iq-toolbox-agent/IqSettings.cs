@@ -4,6 +4,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +15,8 @@ public sealed record IqSettings(string Tenant, string SearchEndpoint, string Sea
 {
     public const string SearchApi = "2026-08-01-preview";
     public const string ConnectionApi = "2025-04-01-preview";
-    public string BlobSource => Prefix + "-kb-blob";
+    public string SharePointSource => Prefix + "-kb-sharepoint";
+    public string SharePointIndex => Prefix + "-nb7-index";
     public string SharedBase => Prefix + "-kb";
     public string BaseName => Prefix + "-toolbox-kb";
     public string ConnectionName => Prefix + "-iq-search-mcp";
@@ -75,6 +78,31 @@ public sealed record IqSettings(string Tenant, string SearchEndpoint, string Sea
                 (value[0] == '\'' && value[value.Length - 1] == '\'')))
                 value = value.Substring(1, value.Length - 2);
             Environment.SetEnvironmentVariable(name, value);
+        }
+    }
+
+    public string ValidateUserToken(string token, DateTimeOffset now)
+    {
+        try
+        {
+            string[] parts = token.Split('.');
+            if (parts.Length != 3) throw new FormatException();
+            string payload = parts[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight((payload.Length + 3) / 4 * 4, '=');
+            JsonObject claims = JsonNode.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(payload)))!.AsObject();
+            string? oid = (string?)claims["oid"], audience = (string?)claims["aud"];
+            if ((string?)claims["idtyp"] == "app" || string.IsNullOrWhiteSpace((string?)claims["scp"]) ||
+                !Guid.TryParseExact(oid, "D", out _) ||
+                !string.Equals((string?)claims["tid"], Tenant, StringComparison.OrdinalIgnoreCase) ||
+                audience?.TrimEnd('/') != "https://ai.azure.com" ||
+                claims["exp"]!.GetValue<long>() <= now.ToUnixTimeSeconds())
+                throw new FormatException();
+            return oid!;
+        }
+        catch (Exception error) when (error is FormatException or InvalidOperationException or
+            System.Text.Json.JsonException or NullReferenceException or ArgumentException)
+        {
+            throw new InvalidOperationException("Invoke requires an unexpired delegated Foundry user token in AZURE_TENANT_ID. Sign in as a non-admin test user; app-only access is not a fallback.");
         }
     }
 

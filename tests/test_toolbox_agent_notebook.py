@@ -1,8 +1,13 @@
-import tempfile
+import base64
+from contextlib import redirect_stdout
+import io
+import json
+import shutil
 import unittest
+import uuid
 import zipfile
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 from azure.ai.projects.models import AgentVersionStatus
 
@@ -17,47 +22,82 @@ PRINCIPAL = "55555555-5555-5555-5555-555555555555"
 
 class ToolboxAgentNotebookTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(dir=ROOT, prefix=".test-toolbox-")
-        self.folder = Path(self.tmp.name) / "hosted-agent-iq"
+        self.fixture = ROOT / ".workshop" / ("test-toolbox-" + uuid.uuid4().hex)
+        self.fixture.mkdir(parents=True)
+        self.addCleanup(shutil.rmtree, self.fixture)
+        self.folder = self.fixture / "hosted-agent-iq"
         self.ns = {
             "Path": Path, "zipfile": zipfile, "agent_folder": self.folder,
             "requests": Mock(), "time": Mock(time=Mock(return_value=0), sleep=Mock()),
-            "uuid": __import__("uuid"),
+            "uuid": uuid, "UUID": uuid.UUID, "json": json, "base64": base64,
             "search_token": lambda: "search-token", "arm_token": lambda: "arm-token",
             "search_endpoint": SEARCH, "search_resource_id": SEARCH_ID,
+            "project_resource_id": PROJECT_ID,
+            "project_endpoint": "https://workshop.services.ai.azure.com/api/projects/workshop",
+            "tenant_id": "11111111-1111-1111-1111-111111111111",
             "api_version": "2026-08-01-preview", "prefix": "alice01",
-            "blob_source_name": "alice01-kb-blob", "knowledge_base_name": "alice01-toolbox-kb",
+            "sharepoint_source_name": "alice01-kb-sharepoint",
+            "sharepoint_index_name": "alice01-nb7-index", "knowledge_base_name": "alice01-toolbox-kb",
             "toolbox_name": "alice01-iq-toolbox", "agent_name": "alice01-iq-agent",
             "connection_name": "alice01-iq-search-mcp",
             "connection_id": f"{PROJECT_ID}/connections/alice01-iq-search-mcp",
             "model_name": "workshop-model",
             "project_client": Mock(),
+            "AzureCliCredential": MagicMock(), "AIProjectClient": MagicMock(),
             "knowledge_base_mcp_url": f"{SEARCH}/knowledgebases/alice01-toolbox-kb/mcp?api-version=2026-08-01-preview",
         }
 
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_knowledge_base_uses_only_blob_source_and_copies_models(self):
+    def test_knowledge_base_uses_only_validated_sharepoint_source_and_copies_models(self):
         requests = self.ns["requests"]
+        source_fields = ("id", "content", "sourceFile", "webUrl", "page", "pageTo")
         requests.get.side_effect = [
-            http_response(200, {"kind": "azureBlob"}),
+            http_response(200, {
+                "kind": "searchIndex",
+                "searchIndexParameters": {
+                    "searchIndexName": "alice01-nb7-index",
+                    "semanticConfigurationName": "semantic-config",
+                    "searchFields": [{"name": "content"}],
+                    "sourceDataFields": [{"name": name} for name in source_fields],
+                },
+            }),
+            http_response(200, {
+                "permissionFilterOption": "enabled",
+                "fields": [{"name": name, "retrievable": True} for name in source_fields] + [
+                    {"name": name, "type": "Collection(Edm.String)", "permissionFilter": kind,
+                     "filterable": True, "retrievable": False}
+                    for name, kind in (("UserIds", "userIds"), ("GroupIds", "groupIds"))
+                ],
+                "semantic": {"configurations": [{
+                    "name": "semantic-config",
+                    "prioritizedFields": {"prioritizedContentFields": [{"fieldName": "content"}]},
+                }]},
+            }),
             http_response(200, {"models": [{"kind": "azureOpenAI"}], "answerInstructions": "Be brief."}),
         ]
         requests.put.return_value = http_response(200, {})
         exec(code_cell(TOOLBOX, "create-knowledge-base"), self.ns)
         body = requests.put.call_args.kwargs["json"]
-        self.assertEqual(body["knowledgeSources"], [{"name": "alice01-kb-blob"}])
+        self.assertEqual(body["knowledgeSources"], [{"name": "alice01-kb-sharepoint"}])
         self.assertEqual(body["models"], [{"kind": "azureOpenAI"}])
+        self.assertEqual(body["answerInstructions"], "Be brief.")
+        self.assertEqual(body["outputMode"], "answerSynthesis")
+        self.assertEqual(body["retrievalReasoningEffort"], {"kind": "low"})
+        self.assertEqual([call.args[0] for call in requests.get.call_args_list], [
+            f"{SEARCH}/knowledgesources/alice01-kb-sharepoint?api-version=2026-08-01-preview",
+            f"{SEARCH}/indexes/alice01-nb7-index?api-version=2026-08-01-preview",
+            f"{SEARCH}/knowledgebases/alice01-kb?api-version=2026-08-01-preview",
+        ])
+        requests.put.assert_called_once()
         self.assertTrue(requests.put.call_args.args[0].startswith(f"{SEARCH}/knowledgebases/alice01-toolbox-kb"))
         self.assertTrue(self.ns["knowledge_base_mcp_url"].endswith("/knowledgebases/alice01-toolbox-kb/mcp?api-version=2026-08-01-preview"))
 
     def test_missing_prerequisite_notebook_is_reported(self):
         self.ns["requests"].get.return_value = http_response(404, {})
-        with self.assertRaisesRegex(RuntimeError, "notebook 11"):
+        with self.assertRaisesRegex(RuntimeError, "notebooks 07 and 11"):
             exec(code_cell(TOOLBOX, "create-knowledge-base"), self.ns)
+        self.ns["requests"].put.assert_not_called()
 
-    def test_toolbox_creates_agent_identity_connection_and_promotes_version(self):
+    def test_toolbox_creates_project_identity_connection_and_promotes_version(self):
         client = self.ns["project_client"]
         self.ns["requests"].put.return_value = http_response(201, {})
         client.toolboxes.create_version.return_value = Mock(version="2")
@@ -70,7 +110,7 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
         self.assertEqual(call.kwargs["headers"], {"Authorization": "Bearer arm-token"})
         self.assertEqual(call.kwargs["json"], {"properties": {
             "category": "RemoteTool",
-            "authType": "AgenticIdentityToken",
+            "authType": "ProjectManagedIdentity",
             "target": self.ns["knowledge_base_mcp_url"],
             "audience": "https://search.azure.com",
             "isSharedToAll": True,
@@ -121,27 +161,114 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
         client.agents.get_version.assert_called_once_with("alice01-iq-agent", "1")
         self.ns["time"].sleep.assert_not_called()
 
-    def grant(self, status):
-        self.ns["version"] = Mock(instance_identity=Mock(principal_id=PRINCIPAL))
-        self.ns["requests"].put.return_value = http_response(status, {})
+    def reader_assignment(self):
+        return {"properties": {
+            "principalId": PRINCIPAL,
+            "scope": SEARCH_ID,
+            "roleDefinitionId": "/subscriptions/s/providers/Microsoft.Authorization/roleDefinitions/"
+                                "1407120a-92aa-4202-b7e9-c0e197c71c8f",
+        }}
+
+    def grant(self, status, assignments=None, conflict_code="RoleAssignmentExists"):
+        self.ns["version"] = Mock(instance_identity=Mock(
+            principal_id="66666666-6666-6666-6666-666666666666"))
+        responses = [http_response(200, {"identity": {"principalId": PRINCIPAL}})]
+        if status == 409:
+            responses.append(http_response(
+                200, {"value": assignments if assignments is not None else [self.reader_assignment()]}))
+        self.ns["requests"].get.side_effect = responses
+        self.ns["requests"].put.return_value = http_response(status, {"error": {"code": conflict_code}})
         exec(code_cell(TOOLBOX, "grant-search-access"), self.ns)
         return self.ns["requests"].put
 
-    def test_grant_assigns_search_index_data_reader_to_agent_identity(self):
+    def test_grant_assigns_search_index_data_reader_to_project_identity(self):
         put = self.grant(201)
         body = put.call_args.kwargs["json"]["properties"]
         self.assertEqual(body["principalId"], PRINCIPAL)
         self.assertEqual(body["principalType"], "ServicePrincipal")
         self.assertTrue(body["roleDefinitionId"].endswith("1407120a-92aa-4202-b7e9-c0e197c71c8f"))
-        self.assertTrue(put.call_args.args[0].startswith(f"https://management.azure.com{SEARCH_ID}/"))
+        reader = "1407120a-92aa-4202-b7e9-c0e197c71c8f"
+        assignment = uuid.uuid5(uuid.NAMESPACE_URL, f"{SEARCH_ID}/{PRINCIPAL}/{reader}")
+        self.assertEqual(put.call_args.args[0],
+                         f"https://management.azure.com{SEARCH_ID}/providers/"
+                         f"Microsoft.Authorization/roleAssignments/{assignment}?api-version=2022-04-01")
+        self.assertEqual(self.ns["requests"].get.call_args.args[0],
+                         f"https://management.azure.com{PROJECT_ID}?api-version=2025-04-01-preview")
 
-    def test_grant_tolerates_existing_assignment_and_falls_back_on_403(self):
+    def test_grant_confirms_exact_existing_project_scope_and_reader_role_on_409(self):
         self.grant(409)
-        self.grant(403)
+        verification = self.ns["requests"].get.call_args
+        self.assertEqual(verification.args[0],
+                         f"https://management.azure.com{SEARCH_ID}/providers/"
+                         "Microsoft.Authorization/roleAssignments?api-version=2022-04-01")
+        self.assertEqual(verification.kwargs["params"], {"$filter": f"principalId eq '{PRINCIPAL}'"})
+        for key in ("principalId", "scope", "roleDefinitionId"):
+            with self.subTest(key=key):
+                assignment = self.reader_assignment()
+                assignment["properties"][key] += "-wrong"
+                with self.assertRaisesRegex(PermissionError, "Cannot confirm the exact project"):
+                    self.grant(409, assignments=[assignment])
+        with self.assertRaisesRegex(PermissionError, "Stop before questions"):
+            self.grant(409, assignments=[])
+        with self.assertRaisesRegex(Exception, "HTTP 409"):
+            self.grant(409, conflict_code="UnrelatedConflict")
+
+    def test_grant_denied_raises_with_exact_project_and_scope_admin_handoff(self):
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaisesRegex(PermissionError, "administrator handoff"):
+            self.grant(403)
+        self.assertIn(PRINCIPAL, output.getvalue())
+        self.assertIn(SEARCH_ID, output.getvalue())
+        self.assertIn("Access control (IAM)", output.getvalue())
+        self.assertNotIn("arm-token", output.getvalue())
+        self.assertEqual(self.ns["requests"].get.call_count, 1)
 
     def test_grant_raises_on_other_errors(self):
         with self.assertRaises(Exception):
             self.grant(500)
+
+    def prepare_user_invocation(self, **token_overrides):
+        claims = {
+            "oid": PRINCIPAL, "tid": self.ns["tenant_id"],
+            "aud": "https://ai.azure.com", "scp": "user_impersonation", "exp": 3600,
+        }
+        claims.update(token_overrides)
+        payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+        access_token = f"header.{payload}.signature"
+        credential = self.ns["AzureCliCredential"].return_value.__enter__.return_value
+        credential.get_token.return_value = Mock(token=access_token)
+        project = self.ns["AIProjectClient"].return_value.__enter__.return_value
+        client = project.get_openai_client.return_value.__enter__.return_value
+        client.responses.create.return_value = Mock(
+            status="completed", output_text="Synthetic grounded answer.", output=[],
+            model_dump=Mock(return_value={"status": "completed", "output": []}),
+        )
+        return access_token, project, client
+
+    def test_invocations_use_validated_cli_user_and_independent_nonstored_bounded_calls(self):
+        access_token, project, client = self.prepare_user_invocation()
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exec(code_cell(TOOLBOX, "invoke"), self.ns)
+            exec(code_cell(TOOLBOX, "invoke-unknown"), self.ns)
+        self.assertEqual(self.ns["AzureCliCredential"].call_count, 2)
+        self.assertEqual(client.responses.create.call_count, 2)
+        for call in client.responses.create.call_args_list:
+            self.assertEqual(set(call.kwargs), {"input", "store"})
+            self.assertIs(call.kwargs["store"], False)
+        for call in project.get_openai_client.call_args_list:
+            self.assertEqual(call.kwargs, {
+                "agent_name": "alice01-iq-agent", "api_key": access_token,
+                "max_retries": 0, "timeout": 120.0,
+            })
+        self.assertIn(PRINCIPAL, output.getvalue())
+        self.assertNotIn(access_token, output.getvalue())
+
+    def test_app_only_invocation_stops_before_constructing_question_client(self):
+        self.prepare_user_invocation(idtyp="app")
+        with self.assertRaisesRegex(PermissionError, "delegated USER token"):
+            exec(code_cell(TOOLBOX, "invoke"), self.ns)
+        self.ns["AIProjectClient"].assert_not_called()
 
     def test_cleanup_off_by_default_and_deletes_only_attendee_resources(self):
         exec(code_cell(TOOLBOX, "cleanup"), self.ns)
