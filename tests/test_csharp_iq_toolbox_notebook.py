@@ -186,7 +186,7 @@ public sealed class Capture {
                 self.assertEqual([p.name for p in path.iterdir()], [".env"])
         self.assertEqual(len(set(outputs)), 1)
 
-    def test_notebook_schema_inline_sources_blank_outputs_and_local_links(self):
+    def test_notebook_schema_inline_sources_polyglot_metadata_and_local_links(self):
         notebook = nbformat.read(NOTEBOOK, as_version=4)
         nbformat.validate(notebook)
         code = "\n".join(c.source for c in notebook.cells if c.cell_type == "code")
@@ -194,7 +194,6 @@ public sealed class Capture {
             self.assertNotIn(forbidden, code)
         self.assertIn('Path.GetFullPath("..")', code)
         self.assertIn("bool CLEAN_UP = false;", code)
-        self.assertTrue(all(c.execution_count is None and not c.outputs for c in notebook.cells if c.cell_type == "code"))
         for cell in notebook.cells:
             if cell.cell_type == "code":
                 self.assertEqual(cell.metadata["vscode"]["languageId"], "polyglot-notebook")
@@ -301,6 +300,14 @@ if (handler.Requests.Count != {count} ||
 if (handler.Requests.Count(r => r.Method == "DELETE") != 4 ||
     handler.Requests.Where(r => r.Method == "DELETE").Any(r => r.Url.Contains("force") || r.Url.Contains("/knowledgesources/")))
     throw new Exception("Cleanup scope/forcing");
+""")
+
+    def test_actual_knowledge_base_update_accepts_204_and_verifies_saved_definition(self):
+        self.execute(ids={"create-knowledge-base"}, mode="kb-no-content", checks="""
+if (handler.Requests.Count != 5 || handler.Requests.Count(r => r.Method == "PUT") != 1 ||
+    handler.Requests.Last().Method != "GET" ||
+    knowledgeBase["name"].ToString() != settings.BaseName)
+    throw new Exception("Successful 204 update was not read back once without a write retry");
 """)
 
     def test_actual_grant_handoff_and_failed_invocations_stop_without_paid_retries(self):

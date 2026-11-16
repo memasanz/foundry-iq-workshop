@@ -79,8 +79,8 @@ public sealed partial class IqWorkshop
     public JsonObject KnowledgeBaseDefinition(JsonObject shared) => new JsonObject
     {
         ["name"] = settings.BaseName,
-        ["description"] = "SharePoint documents with Entra user/group ACLs, for user-delegated hosted retrieval.",
-        ["retrievalInstructions"] = "Use " + settings.SharePointSource + " for questions about SharePoint documents. Retrieve only evidence authorized for the signed-in user.",
+        ["description"] = "ACL-aware indexed SharePoint documents for the hosted agent.",
+        ["retrievalInstructions"] = "Use " + settings.SharePointSource + " for questions about company policy, travel, onboarding or documents.",
         ["answerInstructions"] = shared["answerInstructions"]?.DeepClone(),
         ["outputMode"] = "answerSynthesis",
         ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = settings.SharePointSource }),
@@ -91,8 +91,11 @@ public sealed partial class IqWorkshop
     public async Task<JsonObject> CreateKnowledgeBaseAsync()
     {
         JsonObject shared = await VerifySourcesAsync();
-        JsonObject created = await RequiredAsync(HttpMethod.Put, SearchUrl("knowledgebases", settings.BaseName),
-            "https://search.azure.com", KnowledgeBaseDefinition(shared), accepted: new[] { 200, 201 });
+        IqReply reply = await SendAsync(HttpMethod.Put, SearchUrl("knowledgebases", settings.BaseName),
+            "https://search.azure.com", KnowledgeBaseDefinition(shared), accepted: new[] { 200, 201, 204 });
+        JsonObject created = reply.Status == 204
+            ? await RequiredAsync(HttpMethod.Get, SearchUrl("knowledgebases", settings.BaseName), "https://search.azure.com")
+            : reply.Json ?? throw new InvalidOperationException("Service returned no knowledge-base JSON object.");
         ValidateKnowledgeBase(created);
         Console.WriteLine("Knowledge base ready: " + settings.BaseName + " | MCP: " + settings.McpUrl);
         return created;
@@ -124,7 +127,7 @@ public sealed partial class IqWorkshop
 
     public JsonObject ToolboxDefinition() => new JsonObject
     {
-        ["description"] = "Foundry IQ SharePoint knowledge base for user-delegated hosted retrieval.",
+        ["description"] = "Foundry IQ knowledge base for the workshop hosted agent.",
         ["tools"] = new JsonArray(new JsonObject
         {
             ["type"] = "mcp",

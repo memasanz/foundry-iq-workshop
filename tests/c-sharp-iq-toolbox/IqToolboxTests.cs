@@ -90,6 +90,16 @@ try
         if (command != "invoke" && command != "invoke-unknown")
             Check(handler.Requests.All(r => !r.Url.Contains("/responses?")), "Step runs a hidden model call");
     }
+    foreach (string mode in new[] { "kb-no-content", "kb-no-content-mismatch" })
+    {
+        handler.Reset(mode);
+        if (mode == "kb-no-content") Check((string?)((await lab.CreateKnowledgeBaseAsync())["name"]) == settings.BaseName,
+            "Successful 204 update did not return the persisted knowledge base");
+        else await Fails(() => lab.CreateKnowledgeBaseAsync(), "SharePoint-only");
+        Check(handler.Requests.Count == 5 && handler.Requests.Count(r => r.Method == "PUT") == 1 &&
+            handler.Requests.Last().Method == "GET" && !handler.Requests.Any(r => r.Url.Contains("/responses?")),
+            "204 update retried a write/question instead of reading back metadata once");
+    }
     handler.Reset("default-current");
     await lab.PublishToolboxAsync();
     Check(handler.Requests.Count == 3 && handler.Requests.All(r => r.Method != "PATCH"), "Unnecessary default promotion");
@@ -351,7 +361,7 @@ public sealed class IqOfflineHandler : HttpMessageHandler
     private JsonObject Base() => new JsonObject
     {
         ["name"] = settings.BaseName,
-        ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = Mode == "bad-kb" ? "other-source" : settings.SharePointSource }),
+        ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = Mode is "bad-kb" or "kb-no-content-mismatch" ? "other-source" : settings.SharePointSource }),
     };
     private JsonObject Connection() => new JsonObject
     {
@@ -463,7 +473,11 @@ public sealed class IqOfflineHandler : HttpMessageHandler
             result = IqTestData.SharedBase();
             if (Mode == "no-models") result.Remove("models");
         }
-        else if (path.EndsWith("/knowledgebases/" + settings.BaseName)) result = request.Method == HttpMethod.Put ? body!.DeepClone().AsObject() : Base();
+        else if (path.EndsWith("/knowledgebases/" + settings.BaseName))
+        {
+            result = request.Method == HttpMethod.Put ? body!.DeepClone().AsObject() : Base();
+            if (request.Method == HttpMethod.Put && Mode is "kb-no-content" or "kb-no-content-mismatch") status = 204;
+        }
         else if (path.Contains("/toolboxes/"))
         {
             if (request.Method == HttpMethod.Post) result = ToolboxVersion("2");
