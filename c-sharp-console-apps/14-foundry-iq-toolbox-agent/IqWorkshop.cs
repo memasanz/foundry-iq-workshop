@@ -85,7 +85,7 @@ public sealed partial class IqWorkshop
         ["outputMode"] = "answerSynthesis",
         ["knowledgeSources"] = new JsonArray(new JsonObject { ["name"] = settings.SharePointSource }),
         ["models"] = shared["models"]?.DeepClone(),
-        ["retrievalReasoningEffort"] = new JsonObject { ["kind"] = "low" },
+        ["retrievalReasoningEffort"] = new JsonObject { ["kind"] = "medium" },
     };
 
     public async Task<JsonObject> CreateKnowledgeBaseAsync()

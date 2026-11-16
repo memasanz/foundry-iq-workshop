@@ -25,7 +25,7 @@ public static class IqToolboxAgentProgram
                 Run from the repository root; .env then .env.azure override environment values.
                 Commands (only the named action plus necessary existing-resource reads):
                   verify-sources      Check lab07 SharePoint ACL index and lab11 source/model settings.
-                  knowledge-base      Create/update <prefix>-toolbox-kb; SharePoint-only, low reasoning.
+                  knowledge-base      Create/update <prefix>-toolbox-kb; SharePoint-only, medium reasoning.
                   connection          Create/update the ProjectManagedIdentity Search connection.
                   toolbox             Publish one MCP toolbox version and promote its default.
                   check-toolbox       Read/check existing connection and toolbox default; no tool execution.

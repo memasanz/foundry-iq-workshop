@@ -66,7 +66,7 @@ dotnet run --project .\c-sharp-console-apps\14-foundry-iq-toolbox-agent -- invok
 | Command | Exact action |
 |---|---|
 | `verify-sources` | Three metadata reads: lab 11 SharePoint source, lab 07 ACL-enabled index and lab 11 KB model settings. Validates exact index target, user/group permission schema, source fields and semantic config before any write. |
-| `knowledge-base` | Those checks, then create/update `<prefix>-toolbox-kb` containing **only `<prefix>-kb-sharepoint`**, existing models/answer instructions, `answerSynthesis`, low reasoning. Successful HTTP 204 updates are verified with one metadata GET, not a write retry. No Blob/web/unfiltered fallback or reingestion. |
+| `knowledge-base` | Those checks, then create/update `<prefix>-toolbox-kb` containing **only `<prefix>-kb-sharepoint`**, existing models/answer instructions, `answerSynthesis`, medium reasoning. Successful HTTP 204 updates are verified with one metadata GET, not a write retry. No Blob/web/unfiltered fallback or reingestion. |
 | `connection` | Check the SharePoint-only KB; PUT prefixed ARM `RemoteTool` connection, `ProjectManagedIdentity`, Search audience and exact KB MCP target. No key or user token in its definition. |
 | `toolbox` | Check connection, publish one immutable MCP Toolbox version, promote its default if necessary. `require_approval=never` removes approval prompts, not authorization. |
 | `check-toolbox` | Check connection/default/version metadata. No MCP execution or document query. |

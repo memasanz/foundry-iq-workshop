@@ -136,7 +136,7 @@ class PythonIqDelegationTests(unittest.TestCase):
         self.assertEqual(body["knowledgeSources"], [{"name": "alice01-kb-sharepoint"}])
         self.assertEqual(body["models"], base["models"])
         self.assertEqual(body["answerInstructions"], base["answerInstructions"])
-        self.assertEqual(body["retrievalReasoningEffort"], {"kind": "low"})
+        self.assertEqual(body["retrievalReasoningEffort"], {"kind": "medium"})
         self.assertEqual(body["outputMode"], "answerSynthesis")
         self.assertIn("/knowledgebases/alice01-toolbox-kb?", requests.put.call_args.args[0])
 

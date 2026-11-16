@@ -81,7 +81,7 @@ class ToolboxAgentNotebookTests(unittest.TestCase):
         self.assertEqual(body["models"], [{"kind": "azureOpenAI"}])
         self.assertEqual(body["answerInstructions"], "Be brief.")
         self.assertEqual(body["outputMode"], "answerSynthesis")
-        self.assertEqual(body["retrievalReasoningEffort"], {"kind": "low"})
+        self.assertEqual(body["retrievalReasoningEffort"], {"kind": "medium"})
         self.assertEqual([call.args[0] for call in requests.get.call_args_list], [
             f"{SEARCH}/knowledgesources/alice01-kb-sharepoint?api-version=2026-08-01-preview",
             f"{SEARCH}/indexes/alice01-nb7-index?api-version=2026-08-01-preview",
